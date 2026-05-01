@@ -357,7 +357,7 @@ final class ProjectFilesPanel extends JPanel {
                                                       boolean hasFocus) {
             super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, hasFocus);
             this.rowSelected = sel;
-            // Selected row gets an opaque label painted with the L&F's tree selection color;
+            // Selected row gets an opaque label painted with the L&F tree selection color;
             // every other row is fully transparent so the side-panel background shows through.
             setOpaque(sel);
             if (sel) {

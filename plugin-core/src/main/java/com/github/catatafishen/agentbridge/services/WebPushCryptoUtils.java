@@ -3,11 +3,14 @@ package com.github.catatafishen.agentbridge.services;
 import java.math.BigInteger;
 import java.security.AlgorithmParameters;
 import java.security.KeyFactory;
+import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.ECPublicKey;
 import java.security.spec.ECGenParameterSpec;
 import java.security.spec.ECParameterSpec;
 import java.security.spec.ECPoint;
 import java.security.spec.ECPublicKeySpec;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.InvalidParameterSpecException;
 import java.util.Arrays;
 
 /**
@@ -98,8 +101,8 @@ final class WebPushCryptoUtils {
         return result;
     }
 
-    static ECPublicKey decodePublicKey(byte[] uncompressed) throws Exception {
-        // Expect 65 bytes: 0x04 || x(32) || y(32)
+    static ECPublicKey decodePublicKey(byte[] uncompressed) throws NoSuchAlgorithmException, InvalidParameterSpecException, InvalidKeySpecException {
+        // Expect 65 bytes: uncompressed EC point (0x04 marker byte, then 32-byte x coordinate, then 32-byte y coordinate)
         if (uncompressed.length != 65 || uncompressed[0] != 0x04) {
             throw new IllegalArgumentException("Expected 65-byte uncompressed P-256 key");
         }

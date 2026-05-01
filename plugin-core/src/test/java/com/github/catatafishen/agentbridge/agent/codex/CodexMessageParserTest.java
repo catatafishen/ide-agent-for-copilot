@@ -14,7 +14,11 @@ import org.junit.jupiter.api.Test;
 import java.util.Collections;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CodexMessageParserTest {
 
@@ -157,7 +161,7 @@ class CodexMessageParserTest {
         @Test
         void noErrorKey_returnsDefault() {
             assertEquals("Codex turn failed",
-                    CodexMessageParser.extractTurnErrorMessage(new JsonObject()));
+                CodexMessageParser.extractTurnErrorMessage(new JsonObject()));
         }
 
         @Test
@@ -165,7 +169,7 @@ class CodexMessageParserTest {
             JsonObject turn = new JsonObject();
             turn.add("error", JsonNull.INSTANCE);
             assertEquals("Codex turn failed",
-                    CodexMessageParser.extractTurnErrorMessage(turn));
+                CodexMessageParser.extractTurnErrorMessage(turn));
         }
 
         @Test
@@ -173,7 +177,7 @@ class CodexMessageParserTest {
             JsonObject turn = new JsonObject();
             turn.addProperty("error", "something broke");
             assertEquals("something broke",
-                    CodexMessageParser.extractTurnErrorMessage(turn));
+                CodexMessageParser.extractTurnErrorMessage(turn));
         }
 
         @Test
@@ -183,7 +187,7 @@ class CodexMessageParserTest {
             err.addProperty("message", "rate limit exceeded");
             turn.add("error", err);
             assertEquals("rate limit exceeded",
-                    CodexMessageParser.extractTurnErrorMessage(turn));
+                CodexMessageParser.extractTurnErrorMessage(turn));
         }
 
         @Test
@@ -193,12 +197,12 @@ class CodexMessageParserTest {
             err.addProperty("code", 500);
             turn.add("error", err);
             assertEquals(err.toString(),
-                    CodexMessageParser.extractTurnErrorMessage(turn));
+                CodexMessageParser.extractTurnErrorMessage(turn));
         }
 
         @Test
         void doubleEncodedJson_unwrapsInnerErrorMessage() {
-            // inner JSON: {"error":{"message":"actual root cause"}}
+            // inner JSON has an error object whose message field holds the actual root cause
             JsonObject innerError = new JsonObject();
             innerError.addProperty("message", "actual root cause");
             JsonObject inner = new JsonObject();
@@ -210,7 +214,7 @@ class CodexMessageParserTest {
             turn.add("error", err);
 
             assertEquals("actual root cause",
-                    CodexMessageParser.extractTurnErrorMessage(turn));
+                CodexMessageParser.extractTurnErrorMessage(turn));
         }
 
         @Test
@@ -225,7 +229,7 @@ class CodexMessageParserTest {
             turn.add("error", err);
 
             assertEquals(inner.toString(),
-                    CodexMessageParser.extractTurnErrorMessage(turn));
+                CodexMessageParser.extractTurnErrorMessage(turn));
         }
 
         @Test
@@ -237,7 +241,7 @@ class CodexMessageParserTest {
             turn.add("error", err);
 
             assertEquals("{not valid json at all",
-                    CodexMessageParser.extractTurnErrorMessage(turn));
+                CodexMessageParser.extractTurnErrorMessage(turn));
         }
     }
 
@@ -260,8 +264,8 @@ class CodexMessageParserTest {
         @Test
         void multipleTextBlocks_concatenated() {
             List<ContentBlock> blocks = List.of(
-                    new ContentBlock.Text("first"),
-                    new ContentBlock.Text(" second")
+                new ContentBlock.Text("first"),
+                new ContentBlock.Text(" second")
             );
             assertEquals("first second", CodexMessageParser.extractPromptText(blocks));
         }
@@ -269,7 +273,7 @@ class CodexMessageParserTest {
         @Test
         void resourceBlockWithText_formattedWithCodeFence() {
             ContentBlock.ResourceLink rl =
-                    new ContentBlock.ResourceLink("file:///test.java", "test.java", "text/java", "class Test {}", null);
+                new ContentBlock.ResourceLink("file:///test.java", "test.java", "text/java", "class Test {}", null);
             List<ContentBlock> blocks = List.of(new ContentBlock.Resource(rl));
             String result = CodexMessageParser.extractPromptText(blocks);
             assertTrue(result.contains("File: file:///test.java"));
@@ -279,7 +283,7 @@ class CodexMessageParserTest {
         @Test
         void resourceBlockWithNullText_skipped() {
             ContentBlock.ResourceLink rl =
-                    new ContentBlock.ResourceLink("file:///img.png", "img.png", "image/png", null, "base64data");
+                new ContentBlock.ResourceLink("file:///img.png", "img.png", "image/png", null, "base64data");
             List<ContentBlock> blocks = List.of(new ContentBlock.Resource(rl));
             assertEquals("", CodexMessageParser.extractPromptText(blocks));
         }
@@ -287,7 +291,7 @@ class CodexMessageParserTest {
         @Test
         void resourceBlockWithEmptyText_skipped() {
             ContentBlock.ResourceLink rl =
-                    new ContentBlock.ResourceLink("file:///empty.txt", "empty.txt", "text/plain", "", null);
+                new ContentBlock.ResourceLink("file:///empty.txt", "empty.txt", "text/plain", "", null);
             List<ContentBlock> blocks = List.of(new ContentBlock.Resource(rl));
             assertEquals("", CodexMessageParser.extractPromptText(blocks));
         }
@@ -295,8 +299,8 @@ class CodexMessageParserTest {
         @Test
         void thinkingBlockIgnored() {
             List<ContentBlock> blocks = List.of(
-                    new ContentBlock.Thinking("deep thought"),
-                    new ContentBlock.Text("visible")
+                new ContentBlock.Thinking("deep thought"),
+                new ContentBlock.Text("visible")
             );
             assertEquals("visible", CodexMessageParser.extractPromptText(blocks));
         }
@@ -304,8 +308,8 @@ class CodexMessageParserTest {
         @Test
         void imageBlockIgnored() {
             List<ContentBlock> blocks = List.of(
-                    new ContentBlock.Image("base64", "image/png"),
-                    new ContentBlock.Text("after image")
+                new ContentBlock.Image("base64", "image/png"),
+                new ContentBlock.Text("after image")
             );
             assertEquals("after image", CodexMessageParser.extractPromptText(blocks));
         }
@@ -313,10 +317,10 @@ class CodexMessageParserTest {
         @Test
         void mixedTextAndResource() {
             ContentBlock.ResourceLink rl =
-                    new ContentBlock.ResourceLink("file:///f.kt", null, null, "fun main()", null);
+                new ContentBlock.ResourceLink("file:///f.kt", null, null, "fun main()", null);
             List<ContentBlock> blocks = List.of(
-                    new ContentBlock.Text("Check this: "),
-                    new ContentBlock.Resource(rl)
+                new ContentBlock.Text("Check this: "),
+                new ContentBlock.Resource(rl)
             );
             String result = CodexMessageParser.extractPromptText(blocks);
             assertTrue(result.startsWith("Check this: "));
@@ -332,7 +336,7 @@ class CodexMessageParserTest {
         @Test
         void notNewSession_returnsPromptUnchanged() {
             assertEquals("do something",
-                    CodexMessageParser.buildFullPrompt("do something", false, "some instructions"));
+                CodexMessageParser.buildFullPrompt("do something", false, "some instructions"));
         }
 
         @Test
@@ -373,7 +377,7 @@ class CodexMessageParserTest {
         @Test
         void emptyParams_returnsMethodOnly() {
             assertEquals("shell",
-                    CodexMessageParser.buildNativeApprovalDescription("shell", new JsonObject()));
+                CodexMessageParser.buildNativeApprovalDescription("shell", new JsonObject()));
         }
 
         @Test
@@ -519,7 +523,7 @@ class CodexMessageParserTest {
         @Test
         void modelWithExtraFields_ignored() {
             JsonObject m = JsonParser.parseString(
-                    "{\"id\":\"m1\",\"name\":\"Model One\",\"extra\":\"ignored\"}"
+                "{\"id\":\"m1\",\"name\":\"Model One\",\"extra\":\"ignored\"}"
             ).getAsJsonObject();
             Model result = CodexMessageParser.parseModelEntry(m);
             assertNotNull(result);

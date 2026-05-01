@@ -346,7 +346,7 @@ class AcpMessageParserTest {
 
     @Test
     void parsesNestedContentTypeBlock() {
-        // Spec: tool_call_update content items wrap blocks as {type:"content", content:{type,text}}
+        // Spec: tool_call_update content items wrap blocks as objects with type set to "content" and a nested content object
         JsonObject params = updateParams("agent_message_chunk");
         JsonArray arr = new JsonArray();
         JsonObject wrapper = new JsonObject();

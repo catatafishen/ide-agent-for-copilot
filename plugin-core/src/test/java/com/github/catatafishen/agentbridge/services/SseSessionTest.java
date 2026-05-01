@@ -123,6 +123,7 @@ class SseSessionTest {
                 session.awaitClose();
                 awaitReturned.set(true);
             } catch (InterruptedException ignored) {
+                // awaitClose was interrupted; the waiter thread exits cleanly — checked externally
             }
         });
         waiter.start();

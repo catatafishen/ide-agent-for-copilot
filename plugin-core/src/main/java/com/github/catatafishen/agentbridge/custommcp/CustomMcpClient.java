@@ -41,6 +41,13 @@ public final class CustomMcpClient implements AutoCloseable, McpToolCaller {
     private static final int READ_TIMEOUT_MS = 60_000;
     private static final int CLOSE_TIMEOUT_MS = 2_000;
     private static final String PROTOCOL_VERSION = "2025-11-25";
+    private static final String DATA_PREFIX = "data:";
+    private static final String KEY_PROTOCOL_VERSION = "protocolVersion";
+    private static final String KEY_TOOLS = "tools";
+    private static final String KEY_VERSION = "version";
+    private static final String KEY_ERROR = "error";
+    private static final String KEY_RESULT = "result";
+    private static final String KEY_SERVER_INFO = "serverInfo";
     static final String SESSION_HEADER = "Mcp-Session-Id";
 
     private final String url;
@@ -102,13 +109,13 @@ public final class CustomMcpClient implements AutoCloseable, McpToolCaller {
      */
     public void initialize() throws IOException {
         JsonObject params = new JsonObject();
-        params.addProperty("protocolVersion", PROTOCOL_VERSION);
+        params.addProperty(KEY_PROTOCOL_VERSION, PROTOCOL_VERSION);
         JsonObject capabilities = new JsonObject();
-        capabilities.add("tools", new JsonObject());
+        capabilities.add(KEY_TOOLS, new JsonObject());
         params.add("capabilities", capabilities);
         JsonObject clientInfo = new JsonObject();
         clientInfo.addProperty("name", "agentbridge");
-        clientInfo.addProperty("version", "1.0");
+        clientInfo.addProperty(KEY_VERSION, "1.0");
         params.add("clientInfo", clientInfo);
 
         // Per spec: InitializeRequest MUST NOT include a session ID
@@ -144,12 +151,12 @@ public final class CustomMcpClient implements AutoCloseable, McpToolCaller {
             params.add("arguments", arguments);
 
             JsonObject response = sendRequest("tools/call", params);
-            if (response.has("error")) {
+            if (response.has(KEY_ERROR)) {
                 return "Error from MCP server: " + errorMessage(response);
             }
-            if (!response.has("result")) return "";
+            if (!response.has(KEY_RESULT)) return "";
 
-            JsonObject result = response.getAsJsonObject("result");
+            JsonObject result = response.getAsJsonObject(KEY_RESULT);
             boolean isError = result.has("isError") && result.get("isError").getAsBoolean();
             String text = extractTextContent(result);
             return isError ? "Error: " + text : text;
@@ -327,17 +334,17 @@ public final class CustomMcpClient implements AutoCloseable, McpToolCaller {
     @VisibleForTesting
     @NotNull
     static InitializeInfo parseInitializeResult(@NotNull JsonObject response) throws IOException {
-        if (response.has("error")) {
+        if (response.has(KEY_ERROR)) {
             throw new IOException("MCP initialize failed: " + errorMessage(response));
         }
-        JsonObject result = response.has("result") ? response.getAsJsonObject("result") : new JsonObject();
-        String protocolVersion = result.has("protocolVersion") ? result.get("protocolVersion").getAsString() : "";
+        JsonObject result = response.has(KEY_RESULT) ? response.getAsJsonObject(KEY_RESULT) : new JsonObject();
+        String protocolVersion = result.has(KEY_PROTOCOL_VERSION) ? result.get(KEY_PROTOCOL_VERSION).getAsString() : "";
         String serverName = "";
         String serverVersion = "";
-        if (result.has("serverInfo") && result.get("serverInfo").isJsonObject()) {
-            JsonObject serverInfo = result.getAsJsonObject("serverInfo");
+        if (result.has(KEY_SERVER_INFO) && result.get(KEY_SERVER_INFO).isJsonObject()) {
+            JsonObject serverInfo = result.getAsJsonObject(KEY_SERVER_INFO);
             serverName = serverInfo.has("name") ? serverInfo.get("name").getAsString() : "";
-            serverVersion = serverInfo.has("version") ? serverInfo.get("version").getAsString() : "";
+            serverVersion = serverInfo.has(KEY_VERSION) ? serverInfo.get(KEY_VERSION).getAsString() : "";
         }
         return new InitializeInfo(protocolVersion, serverName, serverVersion);
     }
@@ -351,16 +358,16 @@ public final class CustomMcpClient implements AutoCloseable, McpToolCaller {
     @VisibleForTesting
     @NotNull
     static List<ToolInfo> parseToolList(@NotNull JsonObject response) throws IOException {
-        if (response.has("error")) {
+        if (response.has(KEY_ERROR)) {
             throw new IOException("MCP tools/list failed: " + errorMessage(response));
         }
         List<ToolInfo> tools = new ArrayList<>();
-        if (!response.has("result")) return tools;
+        if (!response.has(KEY_RESULT)) return tools;
 
-        JsonObject result = response.getAsJsonObject("result");
-        if (!result.has("tools")) return tools;
+        JsonObject result = response.getAsJsonObject(KEY_RESULT);
+        if (!result.has(KEY_TOOLS)) return tools;
 
-        for (JsonElement element : result.getAsJsonArray("tools")) {
+        for (JsonElement element : result.getAsJsonArray(KEY_TOOLS)) {
             JsonObject toolObj = element.getAsJsonObject();
             String name = toolObj.has("name") ? toolObj.get("name").getAsString() : "";
             String desc = toolObj.has("description") ? toolObj.get("description").getAsString() : "";
@@ -395,8 +402,8 @@ public final class CustomMcpClient implements AutoCloseable, McpToolCaller {
      */
     @NotNull
     private static String errorMessage(@NotNull JsonObject response) {
-        if (response.has("error") && response.get("error").isJsonObject()) {
-            JsonObject err = response.getAsJsonObject("error");
+        if (response.has(KEY_ERROR) && response.get(KEY_ERROR).isJsonObject()) {
+            JsonObject err = response.getAsJsonObject(KEY_ERROR);
             return err.has("message") ? err.get("message").getAsString() : err.toString();
         }
         return "unknown error";
@@ -409,11 +416,11 @@ public final class CustomMcpClient implements AutoCloseable, McpToolCaller {
     @NotNull
     private static String stripSseEnvelope(@NotNull String body) {
         String trimmed = body.trim();
-        if (!trimmed.startsWith("data:")) return body;
+        if (!trimmed.startsWith(DATA_PREFIX)) return body;
         for (String line : trimmed.split("\n")) {
             String stripped = line.trim();
-            if (stripped.startsWith("data:")) {
-                String json = stripped.substring("data:".length()).trim();
+            if (stripped.startsWith(DATA_PREFIX)) {
+                String json = stripped.substring(DATA_PREFIX.length()).trim();
                 if (!json.isEmpty()) return json;
             }
         }

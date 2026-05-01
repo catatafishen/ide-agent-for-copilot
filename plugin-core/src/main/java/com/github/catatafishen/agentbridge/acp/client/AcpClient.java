@@ -49,7 +49,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -88,6 +90,7 @@ public abstract class AcpClient extends AbstractAgentClient {
     private static final String VALUE_DENY_ONCE = "deny_once";
     private static final String VALUE_REJECT_ONCE = "reject_once";
     private static final String KEY_TOOL_CALL = "toolCall";
+    private static final String ERR_PROMPT_FAILED_PREFIX = "Prompt failed for ";
     private static final Set<String> ALLOWED_BUILT_IN_TOOLS = Set.of("web_fetch", "web_search", "task_complete");
 
     protected final Gson gson = new GsonBuilder()
@@ -349,6 +352,12 @@ public abstract class AcpClient extends AbstractAgentClient {
                         enableInjectionFallback(requestedResumeId, supportsSessionResumption());
                     }
                     return loaded;
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    LOG.warn(displayName() + ": session/load interrupted for " + requestedResumeId
+                        + ", falling back to session/new");
+                    persistResumeSessionId(null);
+                    enableInjectionFallback(requestedResumeId, supportsSessionResumption());
                 } catch (Exception e) {
                     LOG.warn(displayName() + ": session/load failed for " + requestedResumeId
                         + ", falling back to session/new: " + e.getMessage());
@@ -477,7 +486,7 @@ public abstract class AcpClient extends AbstractAgentClient {
      * @throws Exception             if the RPC call fails
      * @see <a href="https://agentclientprotocol.com/protocol/session-setup">ACP Session Setup</a>
      */
-    protected String loadSession(String cwd, String sessionId) throws Exception {
+    protected String loadSession(String cwd, String sessionId) throws AgentSessionException, InterruptedException, ExecutionException, TimeoutException {
         if (!supportsSessionResumption()) {
             throw new AgentSessionException(
                 displayName() + " does not advertise loadSession capability");
@@ -517,7 +526,7 @@ public abstract class AcpClient extends AbstractAgentClient {
      * @param sessionId session to load
      * @return the loaded session ID
      */
-    protected final String sendLoadSessionRequest(String method, String cwd, String sessionId) throws Exception {
+    protected final String sendLoadSessionRequest(String method, String cwd, String sessionId) throws InterruptedException, ExecutionException, TimeoutException {
         JsonObject params = new JsonObject();
         params.addProperty(KEY_SESSION_ID, sessionId);
         params.addProperty("cwd", cwd);
@@ -684,8 +693,8 @@ public abstract class AcpClient extends AbstractAgentClient {
             if (recovery != null) return recovery;
             String rootMsg = extractRootCauseMessage(e);
             String msg = rootMsg != null
-                ? "Prompt failed for " + displayName() + ": " + rootMsg
-                : "Prompt failed for " + displayName();
+                ? ERR_PROMPT_FAILED_PREFIX + displayName() + ": " + rootMsg
+                : ERR_PROMPT_FAILED_PREFIX + displayName();
             throw new AgentPromptException(msg, e);
         } finally {
             afterPromptComplete();
@@ -743,7 +752,7 @@ public abstract class AcpClient extends AbstractAgentClient {
         while (current != null) {
             String msg = current.getMessage();
             if (msg != null && !msg.isBlank()
-                && !msg.startsWith("Prompt failed for ")
+                && !msg.startsWith(ERR_PROMPT_FAILED_PREFIX)
                 && !msg.startsWith("Prompt interrupted for ")) {
                 bestMsg = msg;
             }
@@ -801,7 +810,7 @@ public abstract class AcpClient extends AbstractAgentClient {
      * Called at the very start of {@code createSession}, before the {@code session/new} RPC.
      * Override to perform per-session setup, e.g. restarting a poisoned process.
      */
-    protected void beforeCreateSession(String cwd) throws Exception {
+    protected void beforeCreateSession(String cwd) throws AgentStartException {
         // default: no-op
     }
 
@@ -1196,7 +1205,7 @@ public abstract class AcpClient extends AbstractAgentClient {
         }
     }
 
-    private InitializeResponse initialize() throws Exception {
+    private InitializeResponse initialize() throws InterruptedException, ExecutionException, TimeoutException {
         InitializeRequest request = new InitializeRequest(
             PROTOCOL_VERSION,
             new InitializeRequest.ClientInfo(CLIENT_NAME, CLIENT_TITLE, CLIENT_VERSION),
@@ -1229,7 +1238,7 @@ public abstract class AcpClient extends AbstractAgentClient {
         return response;
     }
 
-    private void authenticate() throws Exception {
+    private void authenticate() throws InterruptedException, ExecutionException, TimeoutException {
         if (!supportsAuthenticate()) {
             LOG.info(displayName() + " does not support authenticate — skipping");
             return;
@@ -1379,7 +1388,7 @@ public abstract class AcpClient extends AbstractAgentClient {
                             cleanMsg = msg.substring(start, end);
                         }
                     }
-                    throw new RuntimeException(cleanMsg, e);
+                    throw new IllegalStateException(cleanMsg, e);
                 }
                 current = current.getCause();
             }

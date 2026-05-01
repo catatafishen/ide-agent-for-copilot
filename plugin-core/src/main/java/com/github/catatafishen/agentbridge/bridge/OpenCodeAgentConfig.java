@@ -107,6 +107,8 @@ final class OpenCodeAgentConfig extends ProfileBasedAgentConfig {
         }
     }
 
+    private static final String MCP_SERVERS_KEY = "mcpServers";
+
     /**
      * Converts {@code "mcpServers"} array to {@code "mcp"} object for OpenCode's expected format.
      */
@@ -114,10 +116,10 @@ final class OpenCodeAgentConfig extends ProfileBasedAgentConfig {
     private static String convertMcpServersToObject(@NotNull String configJson) {
         try {
             JsonObject root = JsonParser.parseString(configJson).getAsJsonObject();
-            if (!root.has("mcpServers") || !root.get("mcpServers").isJsonArray()) {
+            if (!root.has(MCP_SERVERS_KEY) || !root.get(MCP_SERVERS_KEY).isJsonArray()) {
                 return configJson;
             }
-            JsonArray servers = root.getAsJsonArray("mcpServers");
+            JsonArray servers = root.getAsJsonArray(MCP_SERVERS_KEY);
             JsonObject mcp = new JsonObject();
             for (JsonElement el : servers) {
                 if (!el.isJsonObject()) continue;
@@ -127,7 +129,7 @@ final class OpenCodeAgentConfig extends ProfileBasedAgentConfig {
                 entry.remove("name");
                 mcp.add(name, entry);
             }
-            root.remove("mcpServers");
+            root.remove(MCP_SERVERS_KEY);
             root.add("mcp", mcp);
             return new Gson().toJson(root);
         } catch (Exception e) {

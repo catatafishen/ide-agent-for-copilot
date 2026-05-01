@@ -7,6 +7,9 @@ import com.github.catatafishen.agentbridge.settings.ChatWebServerSettings;
 import com.github.catatafishen.agentbridge.ui.ChatTheme;
 import com.github.catatafishen.agentbridge.ui.MessageFormatter;
 import com.google.gson.Gson;
+import com.intellij.credentialStore.CredentialAttributes;
+import com.intellij.credentialStore.Credentials;
+import com.intellij.ide.passwordSafe.PasswordSafe;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
@@ -30,6 +33,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.NetworkInterface;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
@@ -39,6 +43,7 @@ import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -71,6 +76,13 @@ public final class ChatWebServer implements Disposable {
 
     private static final Logger LOG = Logger.getInstance(ChatWebServer.class);
     private static final Gson GSON = new Gson();
+    private static final String JS_CONTENT_TYPE = "text/javascript; charset=utf-8";
+    private static final String SEQ_PREFIX = "{\"seq\":";
+    private static final String HDR_CONTENT_TYPE = "Content-Type";
+    private static final String HDR_CACHE_CONTROL = "Cache-Control";
+    private static final String HDR_ACCESS_CONTROL_ORIGIN = "Access-Control-Allow-Origin";
+    private static final String CACHE_NO_CACHE = "no-cache";
+    private static final String CACHE_PUBLIC = "public, max-age=86400";
 
     private final Project project;
     private HttpsServer httpsServer;
@@ -83,7 +95,7 @@ public final class ChatWebServer implements Disposable {
     private volatile byte[] caCertPemBytes;
 
     // ── Event log ─────────────────────────────────────────────────────────────
-    // Stored as raw JSON strings: {"seq":N,"js":"..."}
+    // Stored as raw JSON strings with seq (sequence number) and js (JavaScript event payload) fields
     private final List<String> eventLog = new ArrayList<>();
     private int nextSeq = 1;
 
@@ -297,15 +309,15 @@ public final class ChatWebServer implements Disposable {
     private void registerContexts(HttpServer server) {
         server.createContext("/", this::handleRoot);
         server.createContext("/chat.css", ex -> serveClasspath(ex, "/chat/chat.css", "text/css; charset=utf-8"));
-        server.createContext("/chat.bundle.js", ex -> serveClasspath(ex, "/chat/chat-components.js", "application/javascript; charset=utf-8"));
-        server.createContext("/web-app.js", ex -> serveClasspath(ex, "/chat/web-app.js", "application/javascript; charset=utf-8"));
+        server.createContext("/chat.bundle.js", ex -> serveClasspath(ex, "/chat/chat-components.js", JS_CONTENT_TYPE));
+        server.createContext("/web-app.js", ex -> serveClasspath(ex, "/chat/web-app.js", JS_CONTENT_TYPE));
         server.createContext("/web-app.css", ex -> serveClasspath(ex, "/chat/web-app.css", "text/css; charset=utf-8"));
         server.createContext("/icon.svg", this::handleIconSvg);
         server.createContext("/icon-192.png", ex -> handleIconPng(ex, 192));
         server.createContext("/icon-512.png", ex -> handleIconPng(ex, 512));
         server.createContext("/badge-96.png", this::handleBadgePng);
         server.createContext("/manifest.json", ex -> serveClasspath(ex, "/chat/manifest.json", "application/json; charset=utf-8"));
-        server.createContext("/sw.js", ex -> serveClasspath(ex, "/chat/sw.js", "application/javascript; charset=utf-8"));
+        server.createContext("/sw.js", ex -> serveClasspath(ex, "/chat/sw.js", JS_CONTENT_TYPE));
         server.createContext("/cert.crt", this::handleCert);
         server.createContext("/events", this::handleSse);
         server.createContext("/state", this::handleState);
@@ -444,7 +456,7 @@ public final class ChatWebServer implements Disposable {
                 compactStreamingEvents(js);
             }
             seq = nextSeq++;
-            json = "{\"seq\":" + seq + ",\"js\":" + GSON.toJson(js) + "}";
+            json = SEQ_PREFIX + seq + ",\"js\":" + GSON.toJson(js) + "}";
             if (isClear) {
                 // Don't persist clear in the log — new clients start with an empty page
                 eventLog.clear();
@@ -490,7 +502,7 @@ public final class ChatWebServer implements Disposable {
         synchronized (this) {
             seq = nextSeq++;
         }
-        String json = "{\"seq\":" + seq + ",\"notification\":true,\"title\":"
+        String json = SEQ_PREFIX + seq + ",\"notification\":true,\"title\":"
             + GSON.toJson(title) + ",\"body\":" + GSON.toJson(body) + "}";
         broadcast(json);
         // Also send via Web Push for devices with the browser closed.
@@ -498,7 +510,7 @@ public final class ChatWebServer implements Disposable {
         WebPushSender wp = webPush; // read volatile once; null if not yet initialised
         if (wp != null) {
             if (wp.hasSubscriptions()) {
-                String payload = "{\"seq\":" + seq + ",\"title\":" + GSON.toJson(title) + "}";
+                String payload = SEQ_PREFIX + seq + ",\"title\":" + GSON.toJson(title) + "}";
                 wp.sendToAll(payload);
             } else {
                 LOG.debug("[Chat] Web Push configured but no subscriptions registered for: " + title);
@@ -514,7 +526,58 @@ public final class ChatWebServer implements Disposable {
 
     // ── TLS ───────────────────────────────────────────────────────────────────
 
-    private static final String KEYSTORE_PASSWORD = "agentbridge-ephemeral";
+    private static final String KEYSTORE_PASSWORD_SERVICE = "AgentBridge/KeystorePassword";
+    private static final String PKCS12_TYPE = "PKCS12";
+    private static final String KEYTOOL_CMD = "keytool";
+    private static final String KT_GENKEYPAIR = "-genkeypair";
+    private static final String KT_ALIAS = "-alias";
+    private static final String KT_ALIAS_SERVER = "server";
+    private static final String KT_KEYALG = "-keyalg";
+    private static final String KT_KEYSIZE = "-keysize";
+    private static final String KT_VALIDITY = "-validity";
+    private static final String KT_KEYSTORE = "-keystore";
+    private static final String KT_STORETYPE = "-storetype";
+    private static final String KT_STOREPASS = "-storepass";
+    private static final String KT_KEYPASS = "-keypass";
+    private static final String KT_DNAME = "-dname";
+    private static final String KT_EXT = "-ext";
+    private static final String KT_FILE = "-file";
+    private static final String KT_NOPROMPT = "-noprompt";
+    private static final String KT_IMPORTCERT = "-importcert";
+
+    /**
+     * Returns the keystore password, generating and persisting a random one if none is stored yet.
+     * The password is kept in IntelliJ's PasswordSafe so it survives IDE restarts without being
+     * committed to source code.
+     */
+    private static String getOrCreateKeystorePassword() {
+        CredentialAttributes attrs = new CredentialAttributes(KEYSTORE_PASSWORD_SERVICE);
+        Credentials creds = PasswordSafe.getInstance().get(attrs);
+        if (creds != null) {
+            String pwd = creds.getPasswordAsString();
+            if (pwd != null && !pwd.isEmpty()) return pwd;
+        }
+        String newPwd = UUID.randomUUID().toString();
+        PasswordSafe.getInstance().set(attrs, new Credentials("keystore", newPwd));
+        return newPwd;
+    }
+
+    /**
+     * Returns {@code true} if the given PKCS12 keystore file can be loaded with the current
+     * stored password. Used to detect keystores created under a different password and force
+     * regeneration.
+     */
+    private static boolean canLoadKeystore(java.io.File ksFile) {
+        try {
+            KeyStore ks = KeyStore.getInstance(PKCS12_TYPE);
+            try (java.io.FileInputStream fis = new java.io.FileInputStream(ksFile)) {
+                ks.load(fis, getOrCreateKeystorePassword().toCharArray());
+            }
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
 
     // Must match the -dname used in generateCaPlusServerCerts. Update both together.
     private static final String EXPECTED_SERVER_SUBJECT_CN = "CN=AgentBridge Server";
@@ -538,14 +601,14 @@ public final class ChatWebServer implements Disposable {
      * Certificates are regenerated when the server cert's SANs don't match the current LAN IPs
      * or when the expected subject/SAN is missing (e.g. first run or upgrade from old format).
      */
-    private SSLContext buildSslContext() throws Exception {
+    private SSLContext buildSslContext() throws GeneralSecurityException, IOException {
         java.nio.file.Path pluginDir = getPluginDir();
         java.io.File caKsFile = pluginDir.resolve("ca.p12").toFile();
         java.io.File serverKsFile = pluginDir.resolve("server.p12").toFile();
 
         List<String> localIps = collectLocalIpv4Addresses();
 
-        boolean caNeedsRegen = !caKsFile.exists();
+        boolean caNeedsRegen = !caKsFile.exists() || !canLoadKeystore(caKsFile);
         boolean serverNeedsRegen = caNeedsRegen
             || !serverKsFile.exists()
             || !serverCertCoversAllIps(serverKsFile, localIps)
@@ -565,9 +628,10 @@ public final class ChatWebServer implements Disposable {
         }
 
         // Load CA cert for device installation at /cert.crt
-        KeyStore caKs = KeyStore.getInstance("PKCS12");
+        String ksPassword = getOrCreateKeystorePassword();
+        KeyStore caKs = KeyStore.getInstance(PKCS12_TYPE);
         try (java.io.FileInputStream fis = new java.io.FileInputStream(caKsFile)) {
-            caKs.load(fis, KEYSTORE_PASSWORD.toCharArray());
+            caKs.load(fis, ksPassword.toCharArray());
         }
         byte[] derBytes = caKs.getCertificate("ca").getEncoded();
         String pem = "-----BEGIN CERTIFICATE-----\n"
@@ -576,14 +640,14 @@ public final class ChatWebServer implements Disposable {
         caCertPemBytes = pem.getBytes(StandardCharsets.UTF_8);
 
         // Load server keystore for the HTTPS handshake
-        KeyStore serverKs = KeyStore.getInstance("PKCS12");
+        KeyStore serverKs = KeyStore.getInstance(PKCS12_TYPE);
         try (java.io.FileInputStream fis = new java.io.FileInputStream(serverKsFile)) {
-            serverKs.load(fis, KEYSTORE_PASSWORD.toCharArray());
+            serverKs.load(fis, ksPassword.toCharArray());
         }
         sslKeyStore = serverKs;
 
         KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(serverKs, KEYSTORE_PASSWORD.toCharArray());
+        kmf.init(serverKs, ksPassword.toCharArray());
 
         SSLContext ctx = SSLContext.getInstance("TLS");
         ctx.init(kmf.getKeyManagers(), null, null);
@@ -598,88 +662,89 @@ public final class ChatWebServer implements Disposable {
         java.nio.file.Path pluginDir,
         java.io.File caKsFile,
         java.io.File serverKsFile,
-        List<String> localIps) throws Exception {
+        List<String> localIps) throws IOException {
 
         java.io.File caExportFile = pluginDir.resolve("ca-export.der").toFile();
         java.io.File serverCsrFile = pluginDir.resolve("server.csr").toFile();
         java.io.File serverCerFile = pluginDir.resolve("server.cer").toFile();
 
+        String ksPassword = getOrCreateKeystorePassword();
         try {
             StringBuilder san = new StringBuilder("dns:localhost,dns:agentbridge.local,ip:127.0.0.1,ip:127.0.1.1");
             for (String ip : localIps) san.append(",ip:").append(ip);
 
             // 1. Generate CA key pair + long-lived self-signed CA cert
             runKeytool(new String[]{
-                "keytool", "-genkeypair",
-                "-alias", "ca",
-                "-keyalg", "RSA", "-keysize", "4096", "-validity", "3650",
-                "-keystore", caKsFile.getAbsolutePath(), "-storetype", "PKCS12",
-                "-storepass", KEYSTORE_PASSWORD, "-keypass", KEYSTORE_PASSWORD,
-                "-dname", "CN=AgentBridge CA, O=AgentBridge, C=FI",
-                "-ext", "BC:critical=ca:true",
-                "-ext", "KU:critical=keyCertSign,cRLSign"
+                KEYTOOL_CMD, KT_GENKEYPAIR,
+                KT_ALIAS, "ca",
+                KT_KEYALG, "RSA", KT_KEYSIZE, "4096", KT_VALIDITY, "3650",
+                KT_KEYSTORE, caKsFile.getAbsolutePath(), KT_STORETYPE, PKCS12_TYPE,
+                KT_STOREPASS, ksPassword, KT_KEYPASS, ksPassword,
+                KT_DNAME, "CN=AgentBridge CA, O=AgentBridge, C=FI",
+                KT_EXT, "BC:critical=ca:true",
+                KT_EXT, "KU:critical=keyCertSign,cRLSign"
             });
 
             // 2. Generate server key pair (initially self-signed; will be replaced below)
             runKeytool(new String[]{
-                "keytool", "-genkeypair",
-                "-alias", "server",
-                "-keyalg", "RSA", "-keysize", "2048", "-validity", "397",
-                "-keystore", serverKsFile.getAbsolutePath(), "-storetype", "PKCS12",
-                "-storepass", KEYSTORE_PASSWORD, "-keypass", KEYSTORE_PASSWORD,
-                "-dname", "CN=AgentBridge Server, O=AgentBridge, C=FI"
+                KEYTOOL_CMD, KT_GENKEYPAIR,
+                KT_ALIAS, KT_ALIAS_SERVER,
+                KT_KEYALG, "RSA", KT_KEYSIZE, "2048", KT_VALIDITY, "397",
+                KT_KEYSTORE, serverKsFile.getAbsolutePath(), KT_STORETYPE, PKCS12_TYPE,
+                KT_STOREPASS, ksPassword, KT_KEYPASS, ksPassword,
+                KT_DNAME, "CN=AgentBridge Server, O=AgentBridge, C=FI"
             });
 
             // 3. Generate CSR from server key
             runKeytool(new String[]{
-                "keytool", "-certreq",
-                "-alias", "server",
-                "-keystore", serverKsFile.getAbsolutePath(), "-storetype", "PKCS12",
-                "-storepass", KEYSTORE_PASSWORD,
-                "-file", serverCsrFile.getAbsolutePath()
+                KEYTOOL_CMD, "-certreq",
+                KT_ALIAS, KT_ALIAS_SERVER,
+                KT_KEYSTORE, serverKsFile.getAbsolutePath(), KT_STORETYPE, PKCS12_TYPE,
+                KT_STOREPASS, ksPassword,
+                KT_FILE, serverCsrFile.getAbsolutePath()
             });
 
             // 4. Sign server CSR with CA key → short-lived server cert with SANs and serverAuth EKU
             runKeytool(new String[]{
-                "keytool", "-gencert",
-                "-alias", "ca",
-                "-keystore", caKsFile.getAbsolutePath(), "-storetype", "PKCS12",
-                "-storepass", KEYSTORE_PASSWORD,
+                KEYTOOL_CMD, "-gencert",
+                KT_ALIAS, "ca",
+                KT_KEYSTORE, caKsFile.getAbsolutePath(), KT_STORETYPE, PKCS12_TYPE,
+                KT_STOREPASS, ksPassword,
                 "-infile", serverCsrFile.getAbsolutePath(),
                 "-outfile", serverCerFile.getAbsolutePath(),
-                "-validity", "397",
-                "-ext", "SAN=" + san,
-                "-ext", "EKU=serverAuth",
-                "-ext", "BC:critical=ca:false"
+                KT_VALIDITY, "397",
+                KT_EXT, "SAN=" + san,
+                KT_EXT, "EKU=serverAuth",
+                KT_EXT, "BC:critical=ca:false"
             });
 
             // 5. Export CA cert as DER so it can be imported as a trusted entry into the server keystore
             runKeytool(new String[]{
-                "keytool", "-exportcert",
-                "-alias", "ca",
-                "-keystore", caKsFile.getAbsolutePath(), "-storetype", "PKCS12",
-                "-storepass", KEYSTORE_PASSWORD,
-                "-file", caExportFile.getAbsolutePath()
+                KEYTOOL_CMD, "-exportcert",
+                KT_ALIAS, "ca",
+                KT_KEYSTORE, caKsFile.getAbsolutePath(), KT_STORETYPE, PKCS12_TYPE,
+                KT_STOREPASS, ksPassword,
+                KT_FILE, caExportFile.getAbsolutePath()
             });
 
             // 6. Import CA cert as trusted into server keystore — keytool needs this to build the chain
             runKeytool(new String[]{
-                "keytool", "-importcert",
-                "-alias", "ca",
-                "-keystore", serverKsFile.getAbsolutePath(), "-storetype", "PKCS12",
-                "-storepass", KEYSTORE_PASSWORD,
-                "-file", caExportFile.getAbsolutePath(),
-                "-noprompt", "-trustcacerts"
+                KEYTOOL_CMD, KT_IMPORTCERT,
+                KT_ALIAS, "ca",
+                KT_KEYSTORE, serverKsFile.getAbsolutePath(), KT_STORETYPE, PKCS12_TYPE,
+                KT_STOREPASS, ksPassword,
+                KT_FILE, caExportFile.getAbsolutePath(),
+                KT_NOPROMPT, "-trustcacerts"
             });
 
             // 7. Import signed server cert — replaces the temp self-signed cert; chain: server → CA
             runKeytool(new String[]{
-                "keytool", "-importcert",
-                "-alias", "server",
-                "-keystore", serverKsFile.getAbsolutePath(), "-storetype", "PKCS12",
-                "-storepass", KEYSTORE_PASSWORD,
-                "-file", serverCerFile.getAbsolutePath(),
-                "-noprompt"
+                KEYTOOL_CMD, KT_IMPORTCERT,
+                KT_ALIAS, KT_ALIAS_SERVER,
+                KT_KEYSTORE, serverKsFile.getAbsolutePath(), KT_STORETYPE, PKCS12_TYPE,
+                KT_STOREPASS, ksPassword,
+                KT_FILE, serverCerFile.getAbsolutePath(),
+                KT_NOPROMPT
             });
         } finally {
             java.nio.file.Files.deleteIfExists(caExportFile.toPath());
@@ -698,76 +763,77 @@ public final class ChatWebServer implements Disposable {
         java.nio.file.Path pluginDir,
         java.io.File caKsFile,
         java.io.File serverKsFile,
-        List<String> localIps) throws Exception {
+        List<String> localIps) throws IOException {
 
         java.io.File caExportFile = pluginDir.resolve("ca-export.der").toFile();
         java.io.File serverCsrFile = pluginDir.resolve("server.csr").toFile();
         java.io.File serverCerFile = pluginDir.resolve("server.cer").toFile();
 
+        String ksPassword = getOrCreateKeystorePassword();
         try {
             StringBuilder san = new StringBuilder("dns:localhost,dns:agentbridge.local,ip:127.0.0.1,ip:127.0.1.1");
             for (String ip : localIps) san.append(",ip:").append(ip);
 
             // 1. Generate server key pair (initially self-signed; replaced below)
             runKeytool(new String[]{
-                "keytool", "-genkeypair",
-                "-alias", "server",
-                "-keyalg", "RSA", "-keysize", "2048", "-validity", "397",
-                "-keystore", serverKsFile.getAbsolutePath(), "-storetype", "PKCS12",
-                "-storepass", KEYSTORE_PASSWORD, "-keypass", KEYSTORE_PASSWORD,
-                "-dname", "CN=AgentBridge Server, O=AgentBridge, C=FI"
+                KEYTOOL_CMD, KT_GENKEYPAIR,
+                KT_ALIAS, KT_ALIAS_SERVER,
+                KT_KEYALG, "RSA", KT_KEYSIZE, "2048", KT_VALIDITY, "397",
+                KT_KEYSTORE, serverKsFile.getAbsolutePath(), KT_STORETYPE, PKCS12_TYPE,
+                KT_STOREPASS, ksPassword, KT_KEYPASS, ksPassword,
+                KT_DNAME, "CN=AgentBridge Server, O=AgentBridge, C=FI"
             });
 
             // 2. Generate CSR from server key
             runKeytool(new String[]{
-                "keytool", "-certreq",
-                "-alias", "server",
-                "-keystore", serverKsFile.getAbsolutePath(), "-storetype", "PKCS12",
-                "-storepass", KEYSTORE_PASSWORD,
-                "-file", serverCsrFile.getAbsolutePath()
+                KEYTOOL_CMD, "-certreq",
+                KT_ALIAS, KT_ALIAS_SERVER,
+                KT_KEYSTORE, serverKsFile.getAbsolutePath(), KT_STORETYPE, PKCS12_TYPE,
+                KT_STOREPASS, ksPassword,
+                KT_FILE, serverCsrFile.getAbsolutePath()
             });
 
             // 3. Sign server CSR with existing CA
             runKeytool(new String[]{
-                "keytool", "-gencert",
-                "-alias", "ca",
-                "-keystore", caKsFile.getAbsolutePath(), "-storetype", "PKCS12",
-                "-storepass", KEYSTORE_PASSWORD,
+                KEYTOOL_CMD, "-gencert",
+                KT_ALIAS, "ca",
+                KT_KEYSTORE, caKsFile.getAbsolutePath(), KT_STORETYPE, PKCS12_TYPE,
+                KT_STOREPASS, ksPassword,
                 "-infile", serverCsrFile.getAbsolutePath(),
                 "-outfile", serverCerFile.getAbsolutePath(),
-                "-validity", "397",
-                "-ext", "SAN=" + san,
-                "-ext", "EKU=serverAuth",
-                "-ext", "BC:critical=ca:false"
+                KT_VALIDITY, "397",
+                KT_EXT, "SAN=" + san,
+                KT_EXT, "EKU=serverAuth",
+                KT_EXT, "BC:critical=ca:false"
             });
 
             // 4. Export CA cert as DER so it can be imported as a trusted entry into the server keystore
             runKeytool(new String[]{
-                "keytool", "-exportcert",
-                "-alias", "ca",
-                "-keystore", caKsFile.getAbsolutePath(), "-storetype", "PKCS12",
-                "-storepass", KEYSTORE_PASSWORD,
-                "-file", caExportFile.getAbsolutePath()
+                KEYTOOL_CMD, "-exportcert",
+                KT_ALIAS, "ca",
+                KT_KEYSTORE, caKsFile.getAbsolutePath(), KT_STORETYPE, PKCS12_TYPE,
+                KT_STOREPASS, ksPassword,
+                KT_FILE, caExportFile.getAbsolutePath()
             });
 
             // 5. Import CA cert as trusted into server keystore — keytool needs this to build the chain
             runKeytool(new String[]{
-                "keytool", "-importcert",
-                "-alias", "ca",
-                "-keystore", serverKsFile.getAbsolutePath(), "-storetype", "PKCS12",
-                "-storepass", KEYSTORE_PASSWORD,
-                "-file", caExportFile.getAbsolutePath(),
-                "-noprompt", "-trustcacerts"
+                KEYTOOL_CMD, KT_IMPORTCERT,
+                KT_ALIAS, "ca",
+                KT_KEYSTORE, serverKsFile.getAbsolutePath(), KT_STORETYPE, PKCS12_TYPE,
+                KT_STOREPASS, ksPassword,
+                KT_FILE, caExportFile.getAbsolutePath(),
+                KT_NOPROMPT, "-trustcacerts"
             });
 
             // 6. Import signed server cert — replaces the temp self-signed cert; chain: server → CA
             runKeytool(new String[]{
-                "keytool", "-importcert",
-                "-alias", "server",
-                "-keystore", serverKsFile.getAbsolutePath(), "-storetype", "PKCS12",
-                "-storepass", KEYSTORE_PASSWORD,
-                "-file", serverCerFile.getAbsolutePath(),
-                "-noprompt"
+                KEYTOOL_CMD, KT_IMPORTCERT,
+                KT_ALIAS, KT_ALIAS_SERVER,
+                KT_KEYSTORE, serverKsFile.getAbsolutePath(), KT_STORETYPE, PKCS12_TYPE,
+                KT_STOREPASS, ksPassword,
+                KT_FILE, serverCerFile.getAbsolutePath(),
+                KT_NOPROMPT
             });
         } finally {
             java.nio.file.Files.deleteIfExists(caExportFile.toPath());
@@ -785,7 +851,7 @@ public final class ChatWebServer implements Disposable {
     private static String keytoolPath() {
         return System.getProperty("java.home")
             + java.io.File.separator + "bin"
-            + java.io.File.separator + "keytool";
+            + java.io.File.separator + KEYTOOL_CMD;
     }
 
     private static void runKeytool(String[] cmd) throws IOException {
@@ -827,11 +893,11 @@ public final class ChatWebServer implements Disposable {
     private static boolean serverCertCoversAllIps(java.io.File serverKsFile, List<String> requiredIps) {
         if (requiredIps.isEmpty()) return true;
         try {
-            KeyStore ks = KeyStore.getInstance("PKCS12");
+            KeyStore ks = KeyStore.getInstance(PKCS12_TYPE);
             try (java.io.FileInputStream fis = new java.io.FileInputStream(serverKsFile)) {
-                ks.load(fis, KEYSTORE_PASSWORD.toCharArray());
+                ks.load(fis, getOrCreateKeystorePassword().toCharArray());
             }
-            java.security.cert.Certificate cert = ks.getCertificate("server");
+            java.security.cert.Certificate cert = ks.getCertificate(KT_ALIAS_SERVER);
             if (!(cert instanceof X509Certificate x509)) return false;
             Collection<List<?>> sans = x509.getSubjectAlternativeNames();
             if (sans == null) return false;
@@ -854,11 +920,11 @@ public final class ChatWebServer implements Disposable {
      */
     private static boolean serverCertHasExpectedSubject(java.io.File serverKsFile) {
         try {
-            KeyStore ks = KeyStore.getInstance("PKCS12");
+            KeyStore ks = KeyStore.getInstance(PKCS12_TYPE);
             try (java.io.FileInputStream fis = new java.io.FileInputStream(serverKsFile)) {
-                ks.load(fis, KEYSTORE_PASSWORD.toCharArray());
+                ks.load(fis, getOrCreateKeystorePassword().toCharArray());
             }
-            java.security.cert.Certificate cert = ks.getCertificate("server");
+            java.security.cert.Certificate cert = ks.getCertificate(KT_ALIAS_SERVER);
             if (!(cert instanceof X509Certificate x509)) return false;
             String subject = x509.getSubjectX500Principal().getName();
             if (!subject.contains(EXPECTED_SERVER_SUBJECT_CN) || !subject.contains(EXPECTED_SERVER_SUBJECT_O))
@@ -893,9 +959,9 @@ public final class ChatWebServer implements Disposable {
         try {
             // Serve as PEM — Android's CA certificate installer requires PEM format.
             // Serving raw DER triggers Android's VPN/app-cert installer which asks for a private key.
-            exchange.getResponseHeaders().set("Content-Type", "application/x-pem-file");
+            exchange.getResponseHeaders().set(HDR_CONTENT_TYPE, "application/x-pem-file");
             exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"agentbridge-ca.pem\"");
-            exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+            exchange.getResponseHeaders().set(HDR_CACHE_CONTROL, CACHE_NO_CACHE);
             exchange.sendResponseHeaders(200, pemBytes.length);
             exchange.getResponseBody().write(pemBytes);
         } catch (Exception e) {
@@ -914,8 +980,8 @@ public final class ChatWebServer implements Disposable {
             return;
         }
         byte[] html = buildWebAppHtml().getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
-        exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+        exchange.getResponseHeaders().set(HDR_CONTENT_TYPE, "text/html; charset=utf-8");
+        exchange.getResponseHeaders().set(HDR_CACHE_CONTROL, CACHE_NO_CACHE);
         exchange.sendResponseHeaders(200, html.length);
         exchange.getResponseBody().write(html);
         exchange.close();
@@ -928,8 +994,8 @@ public final class ChatWebServer implements Disposable {
             return;
         }
         byte[] bytes = buildIconSvg().getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "image/svg+xml");
-        exchange.getResponseHeaders().set("Cache-Control", "public, max-age=86400");
+        exchange.getResponseHeaders().set(HDR_CONTENT_TYPE, "image/svg+xml");
+        exchange.getResponseHeaders().set(HDR_CACHE_CONTROL, CACHE_PUBLIC);
         exchange.sendResponseHeaders(200, bytes.length);
         exchange.getResponseBody().write(bytes);
         exchange.close();
@@ -942,8 +1008,8 @@ public final class ChatWebServer implements Disposable {
             return;
         }
         byte[] bytes = size <= 192 ? ICON_192_PNG : ICON_512_PNG;
-        exchange.getResponseHeaders().set("Content-Type", "image/png");
-        exchange.getResponseHeaders().set("Cache-Control", "public, max-age=86400");
+        exchange.getResponseHeaders().set(HDR_CONTENT_TYPE, "image/png");
+        exchange.getResponseHeaders().set(HDR_CACHE_CONTROL, CACHE_PUBLIC);
         exchange.sendResponseHeaders(200, bytes.length);
         exchange.getResponseBody().write(bytes);
         exchange.close();
@@ -1014,6 +1080,7 @@ public final class ChatWebServer implements Disposable {
         try {
             javax.imageio.ImageIO.write(img, "PNG", baos);
         } catch (IOException ignored) {
+            // ImageIO.write to a ByteArrayOutputStream never throws IOException
         }
         return baos.toByteArray();
     }
@@ -1024,8 +1091,8 @@ public final class ChatWebServer implements Disposable {
             exchange.close();
             return;
         }
-        exchange.getResponseHeaders().set("Content-Type", "image/png");
-        exchange.getResponseHeaders().set("Cache-Control", "public, max-age=86400");
+        exchange.getResponseHeaders().set(HDR_CONTENT_TYPE, "image/png");
+        exchange.getResponseHeaders().set(HDR_CACHE_CONTROL, CACHE_PUBLIC);
         exchange.sendResponseHeaders(200, BADGE_96_PNG.length);
         exchange.getResponseBody().write(BADGE_96_PNG);
         exchange.close();
@@ -1117,6 +1184,7 @@ public final class ChatWebServer implements Disposable {
         try {
             javax.imageio.ImageIO.write(img, "PNG", baos);
         } catch (IOException ignored) {
+            // ImageIO.write to a ByteArrayOutputStream never throws IOException
         }
         return baos.toByteArray();
     }
@@ -1129,10 +1197,10 @@ public final class ChatWebServer implements Disposable {
         }
         int fromSeq = parseFromQuery(exchange.getRequestURI().getQuery());
 
-        exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
-        exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+        exchange.getResponseHeaders().set(HDR_CONTENT_TYPE, "text/event-stream; charset=utf-8");
+        exchange.getResponseHeaders().set(HDR_CACHE_CONTROL, CACHE_NO_CACHE);
         exchange.getResponseHeaders().set("Connection", "keep-alive");
-        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+        exchange.getResponseHeaders().set(HDR_ACCESS_CONTROL_ORIGIN, "*");
         exchange.sendResponseHeaders(200, 0);
 
         SseClient client = new SseClient();
@@ -1163,13 +1231,16 @@ public final class ChatWebServer implements Disposable {
                     writeSse(out, ev);
                 }
             }
-        } catch (IOException | InterruptedException ignored) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (IOException ignored) {
             // Client disconnected
         } finally {
             sseClients.remove(client);
             try {
                 exchange.close();
             } catch (Exception ignored) {
+                // best-effort cleanup; connection may already be closed
             }
         }
     }
@@ -1182,7 +1253,7 @@ public final class ChatWebServer implements Disposable {
             seq = nextSeq - 1;
         }
         int domLimit = ChatHistorySettings.getInstance(project).getDomMessageLimit();
-        StringBuilder sb = new StringBuilder("{\"seq\":").append(seq)
+        StringBuilder sb = new StringBuilder(SEQ_PREFIX).append(seq)
             .append(",\"domMessageLimit\":").append(domLimit)
             .append(",\"events\":[");
         for (int i = 0; i < snapshot.size(); i++) {
@@ -1206,7 +1277,7 @@ public final class ChatWebServer implements Disposable {
             snapshot = new ArrayList<>(eventLog);
             seq = nextSeq - 1;
         }
-        StringBuilder sb = new StringBuilder("{\"seq\":").append(seq).append(",\"events\":[");
+        StringBuilder sb = new StringBuilder(SEQ_PREFIX).append(seq).append(",\"events\":[");
         boolean first = true;
         for (String ev : snapshot) {
             if (extractSeq(ev) > fromSeq) {
@@ -1224,9 +1295,9 @@ public final class ChatWebServer implements Disposable {
     }
 
     private void handleAction(HttpExchange exchange, Consumer<String> handler) throws IOException {
-        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+        exchange.getResponseHeaders().set(HDR_ACCESS_CONTROL_ORIGIN, "*");
         exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "POST, OPTIONS");
-        exchange.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type");
+        exchange.getResponseHeaders().set("Access-Control-Allow-Headers", HDR_CONTENT_TYPE);
 
         if ("OPTIONS".equals(exchange.getRequestMethod())) {
             exchange.sendResponseHeaders(204, -1);
@@ -1279,8 +1350,8 @@ public final class ChatWebServer implements Disposable {
                 return;
             }
             byte[] bytes = is.readAllBytes();
-            exchange.getResponseHeaders().set("Content-Type", contentType);
-            exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+            exchange.getResponseHeaders().set(HDR_CONTENT_TYPE, contentType);
+            exchange.getResponseHeaders().set(HDR_CACHE_CONTROL, CACHE_NO_CACHE);
             exchange.sendResponseHeaders(200, bytes.length);
             exchange.getResponseBody().write(bytes);
         }
@@ -1289,8 +1360,8 @@ public final class ChatWebServer implements Disposable {
 
     private void sendJson(HttpExchange exchange, String json) throws IOException {
         byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+        exchange.getResponseHeaders().set(HDR_CONTENT_TYPE, "application/json; charset=utf-8");
+        exchange.getResponseHeaders().set(HDR_ACCESS_CONTROL_ORIGIN, "*");
         exchange.sendResponseHeaders(200, bytes.length);
         exchange.getResponseBody().write(bytes);
         exchange.close();
@@ -1300,7 +1371,7 @@ public final class ChatWebServer implements Disposable {
         List<String> certIps = new ArrayList<>();
         if (sslKeyStore != null) {
             try {
-                java.security.cert.Certificate cert = sslKeyStore.getCertificate("server");
+                java.security.cert.Certificate cert = sslKeyStore.getCertificate(KT_ALIAS_SERVER);
                 if (cert instanceof X509Certificate x509) {
                     Collection<List<?>> sans = x509.getSubjectAlternativeNames();
                     if (sans != null) {

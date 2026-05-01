@@ -56,6 +56,15 @@ public abstract class GitTool extends Tool {
     static final Pattern COMMIT_LINE_PATTERN =
         Pattern.compile("^commit ([0-9a-f]{40})$", Pattern.MULTILINE);
 
+    private static final String REV_PARSE = "rev-parse";
+    private static final String ERR_NO_BASE_PATH = "Error: no project base path";
+    private static final String ERR_PREFIX = "Error";
+    private static final String ABBREV_REF = "--abbrev-ref";
+    private static final String REV_LIST = "rev-list";
+    private static final String COUNT_FLAG = "--count";
+    private static final String ORIGIN_MAIN = "origin/main";
+    private static final String ORIGIN_MASTER = "origin/master";
+
     // ── Multi-repo selectors ─────────────────────────────────
 
     /**
@@ -156,7 +165,7 @@ public abstract class GitTool extends Tool {
 
         if (roots.isEmpty()) {
             String basePath = project.getBasePath();
-            return basePath != null ? basePath : "Error: no project base path";
+            return basePath != null ? basePath : ERR_NO_BASE_PATH;
         }
 
         if (roots.size() == 1) {
@@ -211,16 +220,16 @@ public abstract class GitTool extends Tool {
      * Use when the repo root has already been resolved for the current tool call.
      */
     protected String getBranchContextIn(@NotNull String rootDir) {
-        if (rootDir.startsWith("Error")) return "";
+        if (rootDir.startsWith(ERR_PREFIX)) return "";
         StringBuilder ctx = new StringBuilder();
 
-        String branch = runGitInQuiet(rootDir, "rev-parse", "--abbrev-ref", "HEAD");
+        String branch = runGitInQuiet(rootDir, REV_PARSE, ABBREV_REF, "HEAD");
         if (branch == null) return "";
 
         ctx.append("\n\n--- Context ---\n");
         ctx.append("On branch: ").append(branch).append('\n');
 
-        String tracking = runGitInQuiet(rootDir, "rev-parse", "--abbrev-ref", "@{upstream}");
+        String tracking = runGitInQuiet(rootDir, REV_PARSE, ABBREV_REF, "@{upstream}");
         if (tracking != null) {
             ctx.append("Tracking: ").append(tracking);
             appendAheadBehindIn(ctx, rootDir, tracking);
@@ -232,7 +241,7 @@ public abstract class GitTool extends Tool {
         // Divergence from default branch
         String defaultBranch = detectDefaultBranchIn(rootDir);
         if (defaultBranch != null && !defaultBranch.equals(branch)) {
-            String count = runGitInQuiet(rootDir, "rev-list", "--count", defaultBranch + "..HEAD");
+            String count = runGitInQuiet(rootDir, REV_LIST, COUNT_FLAG, defaultBranch + "..HEAD");
             if (count != null && !"0".equals(count)) {
                 ctx.append("Branch has ").append(count)
                     .append(" commit(s) since ").append(defaultBranch).append('\n');
@@ -272,14 +281,14 @@ public abstract class GitTool extends Tool {
      * Root-aware variant of {@link #getBranchSummary()}.
      */
     protected String getBranchSummaryIn(@NotNull String rootDir) {
-        if (rootDir.startsWith("Error")) return "";
-        String branch = runGitInQuiet(rootDir, "rev-parse", "--abbrev-ref", "HEAD");
+        if (rootDir.startsWith(ERR_PREFIX)) return "";
+        String branch = runGitInQuiet(rootDir, REV_PARSE, ABBREV_REF, "HEAD");
         if (branch == null) return "";
 
         StringBuilder sb = new StringBuilder();
         sb.append("\nBranch: ").append(branch);
 
-        String tracking = runGitInQuiet(rootDir, "rev-parse", "--abbrev-ref", "@{upstream}");
+        String tracking = runGitInQuiet(rootDir, REV_PARSE, ABBREV_REF, "@{upstream}");
         if (tracking != null) {
             appendAheadBehindIn(sb, rootDir, tracking);
         }
@@ -287,8 +296,8 @@ public abstract class GitTool extends Tool {
     }
 
     private void appendAheadBehindIn(@NotNull StringBuilder sb, @NotNull String rootDir, @NotNull String tracking) {
-        String ahead = runGitInQuiet(rootDir, "rev-list", "--count", tracking + "..HEAD");
-        String behind = runGitInQuiet(rootDir, "rev-list", "--count", "HEAD.." + tracking);
+        String ahead = runGitInQuiet(rootDir, REV_LIST, COUNT_FLAG, tracking + "..HEAD");
+        String behind = runGitInQuiet(rootDir, REV_LIST, COUNT_FLAG, "HEAD.." + tracking);
         if (ahead != null && behind != null) {
             sb.append(" (ahead ").append(ahead).append(", behind ").append(behind).append(')');
         }
@@ -360,10 +369,10 @@ public abstract class GitTool extends Tool {
         if (symbolic != null) {
             return symbolic.replace("refs/remotes/", "");
         }
-        String branches = runGitInQuiet(rootDir, "branch", "-r", "--list", "origin/main", "origin/master");
+        String branches = runGitInQuiet(rootDir, "branch", "-r", "--list", ORIGIN_MAIN, ORIGIN_MASTER);
         if (branches == null) return null;
-        if (branches.contains("origin/main")) return "origin/main";
-        if (branches.contains("origin/master")) return "origin/master";
+        if (branches.contains(ORIGIN_MAIN)) return ORIGIN_MAIN;
+        if (branches.contains(ORIGIN_MASTER)) return ORIGIN_MASTER;
         return null;
     }
 
@@ -375,7 +384,7 @@ public abstract class GitTool extends Tool {
      */
     protected String autoFetchIfStale() {
         String root = resolveRepoRootOrError(null);
-        return root.startsWith("Error") ? "" : autoFetchIfStaleIn(root);
+        return root.startsWith(ERR_PREFIX) ? "" : autoFetchIfStaleIn(root);
     }
 
     /**
@@ -391,7 +400,7 @@ public abstract class GitTool extends Tool {
 
         try {
             String result = runGitIn(rootDir, "fetch", "--quiet", "origin");
-            if (result != null && !result.isBlank() && !result.startsWith("Error")) {
+            if (result != null && !result.isBlank() && !result.startsWith(ERR_PREFIX)) {
                 return "(auto-fetched latest from origin)\n";
             }
             return "";
@@ -445,7 +454,7 @@ public abstract class GitTool extends Tool {
     protected String runGitQuiet(String... args) {
         try {
             String result = runGit(args);
-            if (result == null || result.startsWith("Error")) return null;
+            if (result == null || result.startsWith(ERR_PREFIX)) return null;
             return result.trim();
         } catch (Exception e) {
             return null;
@@ -459,7 +468,7 @@ public abstract class GitTool extends Tool {
     protected String runGitInQuiet(@NotNull String rootDir, String... args) {
         try {
             String result = runGitIn(rootDir, args);
-            if (result == null || result.startsWith("Error")) return null;
+            if (result == null || result.startsWith(ERR_PREFIX)) return null;
             return result.trim();
         } catch (Exception e) {
             return null;
@@ -491,13 +500,13 @@ public abstract class GitTool extends Tool {
                 String basePath = project.getBasePath();
                 result = basePath != null
                     ? runGitProcess(basePath, args)
-                    : "Error: no project base path";
+                    : ERR_NO_BASE_PATH;
             }
         } catch (NoClassDefFoundError e) {
             String basePath = project.getBasePath();
             result = basePath != null
                 ? runGitProcess(basePath, args)
-                : "Error: no project base path";
+                : ERR_NO_BASE_PATH;
         }
 
         if (WRITE_COMMANDS.contains(args[0])) {
@@ -598,7 +607,7 @@ public abstract class GitTool extends Tool {
 
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             try {
-                String fullHash = runGitIn(repoRoot, "rev-parse", "HEAD").trim();
+                String fullHash = runGitIn(repoRoot, REV_PARSE, "HEAD").trim();
                 if (fullHash.length() != 40) return;
 
                 // Build the VCS tool window callback separately so it runs only AFTER the

@@ -22,6 +22,7 @@ final class CodexMessageParser {
     private static final String F_DELTA = "delta";
     private static final String F_ERROR = "error";
     private static final String F_MESSAGE = "message";
+    private static final String F_THINKING = "thinking";
     private static final String F_COMMAND = "command";
 
     private CodexMessageParser() {
@@ -49,7 +50,7 @@ final class CodexMessageParser {
 
         JsonObject obj = el.getAsJsonObject();
         if (obj.has(F_TEXT) && obj.get(F_TEXT).isJsonPrimitive()) return obj.get(F_TEXT).getAsString();
-        if (obj.has("thinking") && obj.get("thinking").isJsonPrimitive()) return obj.get("thinking").getAsString();
+        if (obj.has(F_THINKING) && obj.get(F_THINKING).isJsonPrimitive()) return obj.get(F_THINKING).getAsString();
         if (obj.has("summary")) return extractReasoningText(obj.get("summary"));
         if (obj.has(F_DELTA)) return extractReasoningText(obj.get(F_DELTA));
         if (obj.has("content")) return extractReasoningText(obj.get("content"));
@@ -93,10 +94,9 @@ final class CodexMessageParser {
     static String extractPromptText(@NotNull List<ContentBlock> blocks) {
         StringBuilder sb = new StringBuilder();
         for (ContentBlock block : blocks) {
-            if (block instanceof ContentBlock.Text t) {
-                sb.append(t.text());
-            } else if (block instanceof ContentBlock.Resource r) {
-                ContentBlock.ResourceLink rl = r.resource();
+            if (block instanceof ContentBlock.Text(var text)) {
+                sb.append(text);
+            } else if (block instanceof ContentBlock.Resource(var rl)) {
                 if (rl.text() != null && !rl.text().isEmpty()) {
                     sb.append("File: ").append(rl.uri()).append("\n```\n").append(rl.text()).append("\n```\n\n");
                 }

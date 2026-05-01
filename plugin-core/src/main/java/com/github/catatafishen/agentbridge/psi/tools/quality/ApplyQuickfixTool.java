@@ -22,7 +22,9 @@ import org.jetbrains.annotations.NotNull;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -94,7 +96,7 @@ public final class ApplyQuickfixTool extends QualityTool implements Replayable {
 
     private @NotNull String executeWithHandler(@NotNull JsonObject args,
                                                @NotNull PopupHandler handler,
-                                               boolean isReplay) throws Exception {
+                                               boolean isReplay) throws InterruptedException, ExecutionException, TimeoutException {
         if (!args.has("file") || !args.has("line") || !args.has(PARAM_INSPECTION_ID)) {
             return "Error: 'file', 'line', and '" + PARAM_INSPECTION_ID + "' parameters are required";
         }
@@ -309,11 +311,11 @@ public final class ApplyQuickfixTool extends QualityTool implements Replayable {
                                                       @NotNull AtomicReference<PopupSnapshot> sink) {
         return switch (in) {
             case PopupHandler.SelectByValue sv -> sv;
-            case PopupHandler.Snapshot snap -> new PopupHandler.Snapshot(s -> {
+            case PopupHandler.Snapshot(var sinkFn) -> new PopupHandler.Snapshot(s -> {
                 sink.set(s);
-                snap.sink().accept(s);
+                sinkFn.accept(s);
             });
-            case PopupHandler.Cancel ignored -> new PopupHandler.Snapshot(sink::set);
+            case PopupHandler.Cancel() -> new PopupHandler.Snapshot(sink::set);
         };
     }
 

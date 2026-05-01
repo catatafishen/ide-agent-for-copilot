@@ -19,29 +19,30 @@ public class ContentBlockSerializer implements JsonSerializer<ContentBlock> {
     public JsonElement serialize(ContentBlock src, Type typeOfSrc, JsonSerializationContext ctx) {
         JsonObject obj = new JsonObject();
         switch (src) {
-            case ContentBlock.Text t -> {
+            case ContentBlock.Text(var text) -> {
                 obj.addProperty("type", "text");
-                obj.addProperty("text", t.text());
+                obj.addProperty("text", text);
             }
-            case ContentBlock.Thinking t -> {
+            case ContentBlock.Thinking(var thinking) -> {
                 obj.addProperty("type", "thinking");
-                obj.addProperty("thinking", t.thinking());
+                obj.addProperty("thinking", thinking);
             }
-            case ContentBlock.Image img -> {
+            case ContentBlock.Image(var data, var mimeType) -> {
                 obj.addProperty("type", "image");
-                obj.addProperty("data", img.data());
-                obj.addProperty("mimeType", img.mimeType());
+                obj.addProperty("data", data);
+                obj.addProperty("mimeType", mimeType);
             }
-            case ContentBlock.Audio a -> {
+            case ContentBlock.Audio(var data, var mimeType) -> {
                 obj.addProperty("type", "audio");
-                obj.addProperty("data", a.data());
-                obj.addProperty("mimeType", a.mimeType());
+                obj.addProperty("data", data);
+                obj.addProperty("mimeType", mimeType);
             }
-            case ContentBlock.Resource r -> {
+            case ContentBlock.Resource(var resource) -> {
                 obj.addProperty("type", "resource");
-                obj.add("resource", ctx.serialize(r.resource(), ContentBlock.ResourceLink.class));
+                obj.add("resource", ctx.serialize(resource, ContentBlock.ResourceLink.class));
             }
             case null, default -> {
+                // no additional properties for unrecognized block types
             }
         }
         return obj;

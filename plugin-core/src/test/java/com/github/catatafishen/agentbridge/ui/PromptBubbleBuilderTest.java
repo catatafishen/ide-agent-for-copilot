@@ -5,11 +5,17 @@ import org.junit.jupiter.api.Test;
 import java.util.Collections;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PromptBubbleBuilderTest {
 
-    /** Unicode Object Replacement Character — same placeholder used by the builder. */
+    /**
+     * Unicode Object Replacement Character — same placeholder used by the builder.
+     */
     private static final String ORC = "\uFFFC";
 
     // ── helpers ─────────────────────────────────────────────────────────
@@ -19,7 +25,7 @@ class PromptBubbleBuilderTest {
     }
 
     private static ContextItemData selectionItem(String path, String name,
-                                                  int startLine, int endLine) {
+                                                 int startLine, int endLine) {
         return new ContextItemData(path, name, startLine, endLine, null, true);
     }
 
@@ -58,7 +64,7 @@ class PromptBubbleBuilderTest {
     @Test
     void escapeHtml_allSpecialCharsTogether() {
         assertEquals("&amp;&lt;&gt;&#39;",
-                PromptBubbleBuilder.INSTANCE.escapeHtml("&<>'"));
+            PromptBubbleBuilder.INSTANCE.escapeHtml("&<>'"));
     }
 
     @Test
@@ -80,7 +86,7 @@ class PromptBubbleBuilderTest {
     @Test
     void escapeHtml_mixedContentWithSpecialChars() {
         assertEquals("x &lt; y &amp;&amp; y &gt; z",
-                PromptBubbleBuilder.INSTANCE.escapeHtml("x < y && y > z"));
+            PromptBubbleBuilder.INSTANCE.escapeHtml("x < y && y > z"));
     }
 
     // ── buildBubbleHtml — null return on empty items ────────────────────
@@ -93,7 +99,7 @@ class PromptBubbleBuilderTest {
     @Test
     void buildBubbleHtml_emptyItemsListWithOrcsInText_returnsNull() {
         assertNull(PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                "some " + ORC + " text", List.of()));
+            "some " + ORC + " text", List.of()));
     }
 
     // ── buildBubbleHtml — single file item ──────────────────────────────
@@ -102,7 +108,7 @@ class PromptBubbleBuilderTest {
     void buildBubbleHtml_singleFileItem_producesChipWithPath() {
         ContextItemData item = fileItem("src/Main.java", "Main.java");
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                "Look at " + ORC, List.of(item));
+            "Look at " + ORC, List.of(item));
 
         assertNotNull(result);
         assertTrue(result.contains("class='prompt-ctx-chip'"));
@@ -116,9 +122,9 @@ class PromptBubbleBuilderTest {
     void buildBubbleHtml_fileItemWithFileType_fileTypeIgnored() {
         // fileTypeName is stored in ContextItemData but not used in buildBubbleHtml
         ContextItemData item = new ContextItemData(
-                "src/App.kt", "App.kt", 0, 0, "Kotlin", false);
+            "src/App.kt", "App.kt", 0, 0, "Kotlin", false);
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                ORC, List.of(item));
+            ORC, List.of(item));
 
         assertNotNull(result);
         assertTrue(result.contains("href='openfile://src/App.kt'"));
@@ -131,7 +137,7 @@ class PromptBubbleBuilderTest {
     void buildBubbleHtml_selectionWithPositiveStartLine_includesLineInHref() {
         ContextItemData item = selectionItem("src/Foo.kt", "Foo.kt:10-20", 10, 20);
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                "Check " + ORC + " please", List.of(item));
+            "Check " + ORC + " please", List.of(item));
 
         assertNotNull(result);
         assertTrue(result.contains("href='openfile://src/Foo.kt:10'"));
@@ -142,9 +148,9 @@ class PromptBubbleBuilderTest {
     @Test
     void buildBubbleHtml_selectionWithStartLineZero_omitsLine() {
         ContextItemData item = new ContextItemData(
-                "src/Bar.kt", "Bar.kt", 0, 5, null, true);
+            "src/Bar.kt", "Bar.kt", 0, 5, null, true);
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                ORC, List.of(item));
+            ORC, List.of(item));
 
         assertNotNull(result);
         // startLine is 0 → condition (startLine > 0) is false → no line suffix
@@ -155,9 +161,9 @@ class PromptBubbleBuilderTest {
     @Test
     void buildBubbleHtml_selectionWithNegativeStartLine_omitsLine() {
         ContextItemData item = new ContextItemData(
-                "src/X.kt", "X.kt", -1, 5, null, true);
+            "src/X.kt", "X.kt", -1, 5, null, true);
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                ORC, List.of(item));
+            ORC, List.of(item));
 
         assertNotNull(result);
         assertTrue(result.contains("href='openfile://src/X.kt'"));
@@ -168,15 +174,15 @@ class PromptBubbleBuilderTest {
     void buildBubbleHtml_notSelectionWithPositiveStartLine_omitsLine() {
         // isSelection=false → line is never included regardless of startLine value
         ContextItemData item = new ContextItemData(
-                "src/Baz.kt", "Baz.kt", 5, 10, "Kotlin", false);
+            "src/Baz.kt", "Baz.kt", 5, 10, "Kotlin", false);
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                ORC, List.of(item));
+            ORC, List.of(item));
 
         assertNotNull(result);
         assertTrue(result.contains("href='openfile://src/Baz.kt'"),
-                "isSelection=false should not include line in href");
+            "isSelection=false should not include line in href");
         assertTrue(result.contains("title='src/Baz.kt'"),
-                "isSelection=false should not include line in title");
+            "isSelection=false should not include line in title");
     }
 
     // ── buildBubbleHtml — multiple items ────────────────────────────────
@@ -186,7 +192,7 @@ class PromptBubbleBuilderTest {
         ContextItemData item1 = fileItem("a.java", "a.java");
         ContextItemData item2 = fileItem("b.java", "b.java");
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                ORC + " and " + ORC, List.of(item1, item2));
+            ORC + " and " + ORC, List.of(item1, item2));
 
         assertNotNull(result);
         int posA = result.indexOf(">a.java</a>");
@@ -201,7 +207,7 @@ class PromptBubbleBuilderTest {
         ContextItemData file = fileItem("readme.md", "readme.md");
         ContextItemData sel = selectionItem("src/Lib.kt", "Lib.kt:1-50", 1, 50);
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                ORC + " and " + ORC, List.of(file, sel));
+            ORC + " and " + ORC, List.of(file, sel));
 
         assertNotNull(result);
         assertTrue(result.contains("href='openfile://readme.md'"));
@@ -214,7 +220,7 @@ class PromptBubbleBuilderTest {
     void buildBubbleHtml_moreOrcsThanItems_extraOrcsAppendedAsChar() {
         ContextItemData item = fileItem("x.java", "x.java");
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                ORC + " " + ORC, List.of(item));
+            ORC + " " + ORC, List.of(item));
 
         assertNotNull(result);
         // First ORC replaced with chip
@@ -228,7 +234,7 @@ class PromptBubbleBuilderTest {
         ContextItemData item1 = fileItem("first.java", "first.java");
         ContextItemData item2 = fileItem("second.java", "second.java");
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                "text " + ORC, List.of(item1, item2));
+            "text " + ORC, List.of(item1, item2));
 
         assertNotNull(result);
         assertTrue(result.contains(">first.java</a>"));
@@ -239,7 +245,7 @@ class PromptBubbleBuilderTest {
     void buildBubbleHtml_noOrcsInText_noChipsRendered() {
         ContextItemData item = fileItem("file.java", "file.java");
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                "plain text", List.of(item));
+            "plain text", List.of(item));
 
         assertNotNull(result);
         assertEquals("plain text", result);
@@ -252,7 +258,7 @@ class PromptBubbleBuilderTest {
     void buildBubbleHtml_htmlTagsInPromptText_escaped() {
         ContextItemData item = fileItem("f.java", "f.java");
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                "<script>alert('xss')</script> " + ORC, List.of(item));
+            "<script>alert('xss')</script> " + ORC, List.of(item));
 
         assertNotNull(result);
         assertFalse(result.startsWith("<script>"), "HTML tags should be escaped");
@@ -264,7 +270,7 @@ class PromptBubbleBuilderTest {
     void buildBubbleHtml_ampersandInPromptText_escaped() {
         ContextItemData item = fileItem("f.java", "f.java");
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                "a & b " + ORC, List.of(item));
+            "a & b " + ORC, List.of(item));
 
         assertNotNull(result);
         assertTrue(result.contains("a &amp; b"));
@@ -274,10 +280,10 @@ class PromptBubbleBuilderTest {
     void buildBubbleHtml_doubleQuotesInPromptText_escapedViaAppendHtmlChar() {
         ContextItemData item = fileItem("f.java", "f.java");
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                "say \"hello\" " + ORC, List.of(item));
+            "say \"hello\" " + ORC, List.of(item));
 
         assertNotNull(result);
-        // appendHtmlChar escapes " as &quot;
+        // appendHtmlChar encodes double-quote characters as HTML &quot; entities
         assertTrue(result.contains("&quot;hello&quot;"));
     }
 
@@ -285,7 +291,7 @@ class PromptBubbleBuilderTest {
     void buildBubbleHtml_newlineInPromptText_preserved() {
         ContextItemData item = fileItem("f.java", "f.java");
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                "line1\nline2 " + ORC, List.of(item));
+            "line1\nline2 " + ORC, List.of(item));
 
         assertNotNull(result);
         assertTrue(result.contains("line1\nline2"));
@@ -296,9 +302,9 @@ class PromptBubbleBuilderTest {
     @Test
     void buildBubbleHtml_htmlInItemName_escapedInChipText() {
         ContextItemData item = new ContextItemData(
-                "safe/path.java", "<b>bold</b>", 0, 0, null, false);
+            "safe/path.java", "<b>bold</b>", 0, 0, null, false);
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                ORC, List.of(item));
+            ORC, List.of(item));
 
         assertNotNull(result);
         assertTrue(result.contains(">&lt;b&gt;bold&lt;/b&gt;</a>"));
@@ -307,9 +313,9 @@ class PromptBubbleBuilderTest {
     @Test
     void buildBubbleHtml_htmlInItemPath_escapedInTitle() {
         ContextItemData item = new ContextItemData(
-                "path/<script>.java", "file.java", 0, 0, null, false);
+            "path/<script>.java", "file.java", 0, 0, null, false);
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                ORC, List.of(item));
+            ORC, List.of(item));
 
         assertNotNull(result);
         assertTrue(result.contains("title='path/&lt;script&gt;.java'"));
@@ -318,9 +324,9 @@ class PromptBubbleBuilderTest {
     @Test
     void buildBubbleHtml_singleQuoteInItemPath_escapedInTitle() {
         ContextItemData item = new ContextItemData(
-                "it's/path.java", "path.java", 0, 0, null, false);
+            "it's/path.java", "path.java", 0, 0, null, false);
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                ORC, List.of(item));
+            ORC, List.of(item));
 
         assertNotNull(result);
         assertTrue(result.contains("title='it&#39;s/path.java'"));
@@ -329,9 +335,9 @@ class PromptBubbleBuilderTest {
     @Test
     void buildBubbleHtml_selectionPathWithHtmlChars_escapedInTitle() {
         ContextItemData item = new ContextItemData(
-                "a&b.kt", "a&b.kt:5-10", 5, 10, null, true);
+            "a&b.kt", "a&b.kt:5-10", 5, 10, null, true);
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                ORC, List.of(item));
+            ORC, List.of(item));
 
         assertNotNull(result);
         // title for selection: escapeHtml("a&b.kt:5")
@@ -344,7 +350,7 @@ class PromptBubbleBuilderTest {
     void buildBubbleHtml_leadingAndTrailingWhitespace_trimmed() {
         ContextItemData item = fileItem("f.java", "f.java");
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                "  hello " + ORC + "  ", List.of(item));
+            "  hello " + ORC + "  ", List.of(item));
 
         assertNotNull(result);
         assertFalse(result.startsWith(" "), "Leading whitespace should be trimmed");
@@ -355,7 +361,7 @@ class PromptBubbleBuilderTest {
     void buildBubbleHtml_onlyWhitespaceAroundOrc_trimmed() {
         ContextItemData item = fileItem("f.java", "f.java");
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                "  " + ORC + "  ", List.of(item));
+            "  " + ORC + "  ", List.of(item));
 
         assertNotNull(result);
         assertTrue(result.startsWith("<a "), "Result should start with chip after trim");
@@ -377,7 +383,7 @@ class PromptBubbleBuilderTest {
     void buildBubbleHtml_onlyOrc_returnsChipOnly() {
         ContextItemData item = fileItem("f.java", "f.java");
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-                ORC, List.of(item));
+            ORC, List.of(item));
 
         assertNotNull(result);
         assertTrue(result.startsWith("<a "));

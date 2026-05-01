@@ -34,6 +34,7 @@ import java.util.Map;
 public final class ToolCallStatisticsBackfill {
 
     private static final Logger LOG = Logger.getInstance(ToolCallStatisticsBackfill.class);
+    private static final String MCP_HANDLED = "mcpHandled";
 
     private ToolCallStatisticsBackfill() {
         throw new IllegalStateException("Utility class");
@@ -165,8 +166,8 @@ public final class ToolCallStatisticsBackfill {
         String displayName = getStr(obj, "title");
         if (pluginTool.isEmpty()) {
             // Legacy entries with mcpHandled=true but no explicit pluginTool: title was the bare id.
-            boolean mcpHandled = obj.has("mcpHandled") && !obj.get("mcpHandled").isJsonNull()
-                && obj.get("mcpHandled").getAsBoolean();
+            boolean mcpHandled = obj.has(MCP_HANDLED) && !obj.get(MCP_HANDLED).isJsonNull()
+                && obj.get(MCP_HANDLED).getAsBoolean();
             if (mcpHandled && !displayName.isEmpty()) {
                 pluginTool = displayName;
             } else {

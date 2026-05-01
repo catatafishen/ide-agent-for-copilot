@@ -345,11 +345,11 @@ public final class ApplyActionTool extends QualityTool implements Replayable {
                                                       @NotNull AtomicReference<PopupSnapshot> sink) {
         return switch (in) {
             case PopupHandler.SelectByValue sv -> sv;
-            case PopupHandler.Snapshot snap -> new PopupHandler.Snapshot(s -> {
+            case PopupHandler.Snapshot(var sinkFn) -> new PopupHandler.Snapshot(s -> {
                 sink.set(s);
-                snap.sink().accept(s);
+                sinkFn.accept(s);
             });
-            case PopupHandler.Cancel ignored -> new PopupHandler.Snapshot(sink::set);
+            case PopupHandler.Cancel() -> new PopupHandler.Snapshot(sink::set);
         };
     }
 

@@ -13,9 +13,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Handles ACP terminal methods: {@code terminal/create}, {@code terminal/output},
@@ -31,6 +31,8 @@ final class AcpTerminalHandler {
 
     private static final Logger LOG = Logger.getInstance(AcpTerminalHandler.class);
     private static final int DEFAULT_OUTPUT_BYTE_LIMIT = 1_048_576; // 1 MB
+    private static final String OUTPUT_BYTE_LIMIT_KEY = "outputByteLimit";
+    private static final String TERMINAL_ID_KEY = "terminalId";
 
     private final Project project;
     private final Map<String, ManagedTerminal> terminals = new ConcurrentHashMap<>();
@@ -49,8 +51,8 @@ final class AcpTerminalHandler {
         String[] args = getStringArray(params, "args");
         String cwd = params.has("cwd") && params.get("cwd").isJsonPrimitive()
             ? params.get("cwd").getAsString() : project.getBasePath();
-        int outputByteLimit = params.has("outputByteLimit") && params.get("outputByteLimit").isJsonPrimitive()
-            ? params.get("outputByteLimit").getAsInt() : DEFAULT_OUTPUT_BYTE_LIMIT;
+        int outputByteLimit = params.has(OUTPUT_BYTE_LIMIT_KEY) && params.get(OUTPUT_BYTE_LIMIT_KEY).isJsonPrimitive()
+            ? params.get(OUTPUT_BYTE_LIMIT_KEY).getAsInt() : DEFAULT_OUTPUT_BYTE_LIMIT;
 
         // Build command line: [command, ...args]
         String[] cmdArray = new String[1 + args.length];
@@ -92,7 +94,7 @@ final class AcpTerminalHandler {
         LOG.info("Created terminal " + terminalId + ": " + String.join(" ", cmdArray));
 
         JsonObject result = new JsonObject();
-        result.addProperty("terminalId", terminalId);
+        result.addProperty(TERMINAL_ID_KEY, terminalId);
         return result;
     }
 
@@ -100,7 +102,7 @@ final class AcpTerminalHandler {
      * {@code terminal/output} — get current output and optional exit status.
      */
     JsonObject output(@NotNull JsonObject params) {
-        String terminalId = getRequiredString(params, "terminalId");
+        String terminalId = getRequiredString(params, TERMINAL_ID_KEY);
         ManagedTerminal terminal = requireTerminal(terminalId);
 
         JsonObject result = new JsonObject();
@@ -125,7 +127,7 @@ final class AcpTerminalHandler {
      * if a process hangs (e.g. tail -f, zombie process).
      */
     JsonObject waitForExit(@NotNull JsonObject params) throws InterruptedException {
-        String terminalId = getRequiredString(params, "terminalId");
+        String terminalId = getRequiredString(params, TERMINAL_ID_KEY);
         ManagedTerminal terminal = requireTerminal(terminalId);
 
         boolean exited = terminal.process.waitFor(WAIT_FOR_EXIT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -149,7 +151,7 @@ final class AcpTerminalHandler {
      * {@code terminal/kill} — terminate the command without releasing.
      */
     JsonObject kill(@NotNull JsonObject params) {
-        String terminalId = getRequiredString(params, "terminalId");
+        String terminalId = getRequiredString(params, TERMINAL_ID_KEY);
         ManagedTerminal terminal = requireTerminal(terminalId);
 
         if (terminal.process.isAlive()) {
@@ -164,7 +166,7 @@ final class AcpTerminalHandler {
      * {@code terminal/release} — kill if running and release all resources.
      */
     JsonObject release(@NotNull JsonObject params) {
-        String terminalId = getRequiredString(params, "terminalId");
+        String terminalId = getRequiredString(params, TERMINAL_ID_KEY);
         ManagedTerminal terminal = terminals.remove(terminalId);
         if (terminal == null) {
             throw new IllegalArgumentException("Unknown terminal: " + terminalId);

@@ -18,6 +18,7 @@ public final class GitBranchTool extends GitTool {
     private static final String PARAM_BASE = "base";
     private static final String PARAM_ALL = "all";
     private static final String PARAM_FORCE = "force";
+    private static final String ERR_PREFIX = "Error";
 
     public GitBranchTool(Project project) {
         super(project);
@@ -70,7 +71,7 @@ public final class GitBranchTool extends GitTool {
             case "list" -> {
                 // List is read-only: no ambiguity guard, no repo required.
                 String root = resolveRepoRootOrError(repoParam);
-                if (root.startsWith("Error")) yield root;
+                if (root.startsWith(ERR_PREFIX)) yield root;
                 boolean all = args.has(PARAM_ALL) && args.get(PARAM_ALL).getAsBoolean();
                 yield runGitIn(root, CMD_BRANCH, all ? "--all" : "--list", "-v");
             }
@@ -80,7 +81,7 @@ public final class GitBranchTool extends GitTool {
                 String ambiError = requireUnambiguousRepo(repoParam, "branch create");
                 if (ambiError != null) yield ambiError;
                 String root = resolveRepoRootOrError(repoParam);
-                if (root.startsWith("Error")) yield root;
+                if (root.startsWith(ERR_PREFIX)) yield root;
                 String reviewError = AgentEditSession.getInstance(project)
                     .awaitReviewCompletion("branch create '" + name + "'");
                 if (reviewError != null) yield reviewError;
@@ -88,7 +89,7 @@ public final class GitBranchTool extends GitTool {
                     ? args.get(PARAM_BASE).getAsString()
                     : null;
                 String result = ideCreate(root, name, base);
-                if (result.startsWith("Error")) yield result;
+                if (result.startsWith(ERR_PREFIX)) yield result;
                 AgentEditSession.getInstance(project).invalidateOnWorktreeChange("branch create");
                 yield "Created and switched to branch '" + name + "'\n" + getBranchContextIn(root);
             }
@@ -98,12 +99,12 @@ public final class GitBranchTool extends GitTool {
                 String ambiError = requireUnambiguousRepo(repoParam, "branch switch");
                 if (ambiError != null) yield ambiError;
                 String root = resolveRepoRootOrError(repoParam);
-                if (root.startsWith("Error")) yield root;
+                if (root.startsWith(ERR_PREFIX)) yield root;
                 String reviewError = AgentEditSession.getInstance(project)
                     .awaitReviewCompletion("branch switch '" + name + "'");
                 if (reviewError != null) yield reviewError;
                 String result = ideSwitch(root, name);
-                if (result.startsWith("Error")) yield result;
+                if (result.startsWith(ERR_PREFIX)) yield result;
                 AgentEditSession.getInstance(project).invalidateOnWorktreeChange("branch switch");
                 yield "Switched to branch '" + name + "'\n" + getBranchContextIn(root);
             }
@@ -113,7 +114,7 @@ public final class GitBranchTool extends GitTool {
                 String ambiError = requireUnambiguousRepo(repoParam, "branch delete");
                 if (ambiError != null) yield ambiError;
                 String root = resolveRepoRootOrError(repoParam);
-                if (root.startsWith("Error")) yield root;
+                if (root.startsWith(ERR_PREFIX)) yield root;
                 boolean force = args.has(PARAM_FORCE) && args.get(PARAM_FORCE).getAsBoolean();
                 yield ideDelete(root, name, force);
             }

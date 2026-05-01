@@ -16,6 +16,9 @@ public final class GitPushTool extends GitTool {
     private static final String PARAM_BRANCH = "branch";
     private static final String PARAM_FORCE = "force";
     private static final String PARAM_SET_UPSTREAM = "set_upstream";
+    private static final String GIT_REV_PARSE = "rev-parse";
+    private static final String ABBREV_REF = "--abbrev-ref";
+    private static final String DEFAULT_REMOTE = "origin";
 
     public GitPushTool(Project project) {
         super(project);
@@ -62,7 +65,7 @@ public final class GitPushTool extends GitTool {
     public @Nullable String resolvePermissionQuestion(@Nullable JsonObject args) {
         JsonObject enriched = args != null ? args.deepCopy() : new JsonObject();
         if (!enriched.has(PARAM_REMOTE)) {
-            enriched.addProperty(PARAM_REMOTE, "origin");
+            enriched.addProperty(PARAM_REMOTE, DEFAULT_REMOTE);
         }
         if (!enriched.has(PARAM_BRANCH)) {
             String branch = detectCurrentBranch();
@@ -75,7 +78,7 @@ public final class GitPushTool extends GitTool {
     @Nullable
     private String detectCurrentBranch() {
         try {
-            return runGit("rev-parse", "--abbrev-ref", "HEAD").trim();
+            return runGit(GIT_REV_PARSE, ABBREV_REF, "HEAD").trim();
         } catch (Exception e) {
             return null;
         }
@@ -133,10 +136,10 @@ public final class GitPushTool extends GitTool {
 
         if (setUpstream) {
             if (remote == null) {
-                remote = "origin";
+                remote = DEFAULT_REMOTE;
             }
             if (branch == null) {
-                branch = runGitIn(root, "rev-parse", "--abbrev-ref", "HEAD").trim();
+                branch = runGitIn(root, GIT_REV_PARSE, ABBREV_REF, "HEAD").trim();
             }
         }
 
@@ -161,12 +164,12 @@ public final class GitPushTool extends GitTool {
 
         ctx.append("\n\n--- Context ---\n");
         String actualBranch = branch != null ? branch
-            : runGitInQuiet(root, "rev-parse", "--abbrev-ref", "HEAD");
-        String actualRemote = remote != null ? remote : "origin";
+            : runGitInQuiet(root, GIT_REV_PARSE, ABBREV_REF, "HEAD");
+        String actualRemote = remote != null ? remote : DEFAULT_REMOTE;
         ctx.append("Pushed ").append(actualBranch).append(" → ")
             .append(actualRemote).append('/').append(actualBranch).append('\n');
 
-        String remoteUrl = runGitInQuiet(root, "remote", "get-url", actualRemote);
+        String remoteUrl = runGitInQuiet(root, PARAM_REMOTE, "get-url", actualRemote);
         if (remoteUrl != null) {
             ctx.append("Remote: ").append(remoteUrl).append('\n');
         }

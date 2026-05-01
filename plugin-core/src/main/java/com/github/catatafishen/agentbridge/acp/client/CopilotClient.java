@@ -211,8 +211,7 @@ public final class CopilotClient extends AcpClient {
     }
 
     @Override
-    protected String loadSession(String cwd, String sessionId) throws Exception {
-        // Copilot CLI does not support session/load (ACP spec) nor session/resume.
+    protected String loadSession(String cwd, String sessionId) throws AgentSessionException {
         // The --resume CLI flag is the only mechanism, and it is broken in ACP mode as of v1.0.12.
         throw new AgentSessionException(
             "Copilot CLI does not support session loading in ACP mode (as of v1.0.12). "

@@ -9,6 +9,9 @@ import org.jetbrains.annotations.NotNull;
 
 public final class DebugSessionStopTool extends DebugTool {
 
+    private static final String PARAM_STOP_ALL = "stop_all";
+
+
     public DebugSessionStopTool(Project project) {
         super(project);
     }
@@ -41,13 +44,13 @@ public final class DebugSessionStopTool extends DebugTool {
     @Override
     public @NotNull JsonObject inputSchema() {
         return schema(
-            Param.optional("stop_all", TYPE_BOOLEAN, "Set true to stop all debug sessions (default: stops only the active session)")
+            Param.optional(PARAM_STOP_ALL, TYPE_BOOLEAN, "Set true to stop all debug sessions (default: stops only the active session)")
         );
     }
 
     @Override
     public @NotNull String execute(@NotNull JsonObject args) throws Exception {
-        boolean stopAll = args.has("stop_all") && args.get("stop_all").getAsBoolean();
+        boolean stopAll = args.has(PARAM_STOP_ALL) && args.get(PARAM_STOP_ALL).getAsBoolean();
         XDebuggerManager mgr = XDebuggerManager.getInstance(project);
 
         if (stopAll) {
