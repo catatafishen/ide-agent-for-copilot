@@ -25,6 +25,7 @@ import java.security.AlgorithmParameters;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.Signature;
 import java.security.interfaces.ECPrivateKey;
@@ -32,6 +33,8 @@ import java.security.interfaces.ECPublicKey;
 import java.security.spec.ECGenParameterSpec;
 import java.security.spec.ECParameterSpec;
 import java.security.spec.ECPrivateKeySpec;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.InvalidParameterSpecException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
@@ -312,7 +315,8 @@ public final class WebPushSender {
         return WebPushCryptoUtils.encodePublicKeyUncompressed(key);
     }
 
-    private static ECPublicKey decodePublicKey(byte[] uncompressed) throws Exception {
+    private static ECPublicKey decodePublicKey(byte[] uncompressed)
+        throws NoSuchAlgorithmException, InvalidParameterSpecException, InvalidKeySpecException {
         return WebPushCryptoUtils.decodePublicKey(uncompressed);
     }
 

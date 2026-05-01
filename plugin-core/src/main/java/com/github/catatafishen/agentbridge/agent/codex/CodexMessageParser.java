@@ -96,10 +96,8 @@ final class CodexMessageParser {
         for (ContentBlock block : blocks) {
             if (block instanceof ContentBlock.Text(var text)) {
                 sb.append(text);
-            } else if (block instanceof ContentBlock.Resource(var rl)) {
-                if (rl.text() != null && !rl.text().isEmpty()) {
-                    sb.append("File: ").append(rl.uri()).append("\n```\n").append(rl.text()).append("\n```\n\n");
-                }
+            } else if (block instanceof ContentBlock.Resource(var rl) && rl.text() != null && !rl.text().isEmpty()) {
+                sb.append("File: ").append(rl.uri()).append("\n```\n").append(rl.text()).append("\n```\n\n");
             }
         }
         return sb.toString();

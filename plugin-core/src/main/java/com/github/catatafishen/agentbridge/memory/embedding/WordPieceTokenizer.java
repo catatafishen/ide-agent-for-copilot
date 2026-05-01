@@ -193,12 +193,12 @@ public final class WordPieceTokenizer {
             if (this == obj) {
                 return true;
             }
-            if (!(obj instanceof TokenizedInput other)) {
+            if (!(obj instanceof TokenizedInput(var otherInputIds, var otherAttentionMask, var otherTokenTypeIds))) {
                 return false;
             }
-            return Arrays.equals(inputIds, other.inputIds)
-                && Arrays.equals(attentionMask, other.attentionMask)
-                && Arrays.equals(tokenTypeIds, other.tokenTypeIds);
+            return Arrays.equals(inputIds, otherInputIds)
+                && Arrays.equals(attentionMask, otherAttentionMask)
+                && Arrays.equals(tokenTypeIds, otherTokenTypeIds);
         }
 
         @Override
