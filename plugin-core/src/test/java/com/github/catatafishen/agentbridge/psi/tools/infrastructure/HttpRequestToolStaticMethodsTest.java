@@ -3,6 +3,10 @@ package com.github.catatafishen.agentbridge.psi.tools.infrastructure;
 import com.google.gson.JsonObject;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.lang.reflect.Method;
 import java.net.URI;
@@ -10,6 +14,7 @@ import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -160,62 +165,36 @@ class HttpRequestToolStaticMethodsTest {
     @Nested
     class ApplyAuthTest {
 
-        @Test
-        void bearerToken_setsAuthorizationHeader() throws Exception {
+        @ParameterizedTest
+        @CsvSource({
+            "bearer my-token-123, Bearer my-token-123",
+            "BEARER MY-TOKEN, Bearer MY-TOKEN",
+            "'  bearer   spaced-token  ', Bearer spaced-token"
+        })
+        void bearerToken_setsAuthorizationHeader(String authInput, String expectedHeader) throws Exception {
             JsonObject args = new JsonObject();
-            args.addProperty("auth", "bearer my-token-123");
+            args.addProperty("auth", authInput);
             HttpRequest request = buildRequestWithAuth(args);
-            assertEquals("Bearer my-token-123",
+            assertEquals(expectedHeader,
                 request.headers().firstValue("Authorization").orElse(null));
         }
 
-        @Test
-        void bearerToken_caseInsensitive() throws Exception {
-            JsonObject args = new JsonObject();
-            args.addProperty("auth", "BEARER MY-TOKEN");
-            HttpRequest request = buildRequestWithAuth(args);
-            assertEquals("Bearer MY-TOKEN",
-                request.headers().firstValue("Authorization").orElse(null));
+        static Stream<Arguments> basicAuthCases() {
+            return Stream.of(
+                Arguments.of("basic user:pass", "user:pass"),
+                Arguments.of("BASIC admin:secret", "admin:secret"),
+                Arguments.of("basic user:p@ss:word!", "user:p@ss:word!")
+            );
         }
 
-        @Test
-        void bearerToken_trimsWhitespace() throws Exception {
+        @ParameterizedTest
+        @MethodSource("basicAuthCases")
+        void basicAuth_setsBase64AuthorizationHeader(String authInput, String credentials) throws Exception {
             JsonObject args = new JsonObject();
-            args.addProperty("auth", "  bearer   spaced-token  ");
-            HttpRequest request = buildRequestWithAuth(args);
-            assertEquals("Bearer spaced-token",
-                request.headers().firstValue("Authorization").orElse(null));
-        }
-
-        @Test
-        void basicAuth_base64EncodesCredentials() throws Exception {
-            JsonObject args = new JsonObject();
-            args.addProperty("auth", "basic user:pass");
+            args.addProperty("auth", authInput);
             HttpRequest request = buildRequestWithAuth(args);
             String expected = "Basic " + Base64.getEncoder()
-                .encodeToString("user:pass".getBytes(StandardCharsets.UTF_8));
-            assertEquals(expected,
-                request.headers().firstValue("Authorization").orElse(null));
-        }
-
-        @Test
-        void basicAuth_caseInsensitive() throws Exception {
-            JsonObject args = new JsonObject();
-            args.addProperty("auth", "BASIC admin:secret");
-            HttpRequest request = buildRequestWithAuth(args);
-            String expected = "Basic " + Base64.getEncoder()
-                .encodeToString("admin:secret".getBytes(StandardCharsets.UTF_8));
-            assertEquals(expected,
-                request.headers().firstValue("Authorization").orElse(null));
-        }
-
-        @Test
-        void basicAuth_handlesColonInPassword() throws Exception {
-            JsonObject args = new JsonObject();
-            args.addProperty("auth", "basic user:p@ss:word!");
-            HttpRequest request = buildRequestWithAuth(args);
-            String expected = "Basic " + Base64.getEncoder()
-                .encodeToString("user:p@ss:word!".getBytes(StandardCharsets.UTF_8));
+                .encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
             assertEquals(expected,
                 request.headers().firstValue("Authorization").orElse(null));
         }

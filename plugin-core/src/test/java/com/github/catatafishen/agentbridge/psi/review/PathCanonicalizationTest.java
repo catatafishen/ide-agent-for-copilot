@@ -1,6 +1,8 @@
 package com.github.catatafishen.agentbridge.psi.review;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -26,22 +28,14 @@ class PathCanonicalizationTest {
         return AgentEditSession.toAbsolutePath(path, basePath);
     }
 
-    @Test
-    void absolutePath_returnedAsIs() {
-        String abs = "/home/user/project/src/Foo.java";
-        assertEquals(abs, resolve(abs, BASE));
-    }
-
-    @Test
-    void relativePath_resolvedAgainstBase() {
-        assertEquals("/home/user/project/src/Foo.java",
-            resolve("src/Foo.java", BASE));
-    }
-
-    @Test
-    void nestedRelativePath_resolvedCorrectly() {
-        assertEquals("/home/user/project/plugin-core/src/main/java/Foo.kt",
-            resolve("plugin-core/src/main/java/Foo.kt", BASE));
+    @ParameterizedTest
+    @CsvSource({
+        "/home/user/project/src/Foo.java, /home/user/project/src/Foo.java",
+        "src/Foo.java, /home/user/project/src/Foo.java",
+        "plugin-core/src/main/java/Foo.kt, /home/user/project/plugin-core/src/main/java/Foo.kt"
+    })
+    void pathResolution(String inputPath, String expectedOutput) {
+        assertEquals(expectedOutput, resolve(inputPath, BASE));
     }
 
     @Test

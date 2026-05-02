@@ -1,6 +1,8 @@
 package com.github.catatafishen.agentbridge.memory.kg;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 
@@ -456,40 +458,18 @@ class TripleExtractorTest {
 
     // ── Negation guard tests ──────────────────────────────────────────────
 
-    @Test
-    void negation_neverUse_skipsTriple() {
-        String text = "Never use eval() in production code.";
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "Never use eval() in production code.",
+        "Don't use global variables for configuration.",
+        "The module should not depend on external services.",
+        "Avoid using deprecated APIs in the codebase."
+    })
+    void negation_skipsTriple(String text) {
         List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, WING, DRAWER_ID);
 
         assertTrue(triples.isEmpty(),
-            "Negated usage should not produce a triple: " + triples);
-    }
-
-    @Test
-    void negation_dontUse_skipsTriple() {
-        String text = "Don't use global variables for configuration.";
-        List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, WING, DRAWER_ID);
-
-        assertTrue(triples.isEmpty(),
-            "Negated usage should not produce a triple: " + triples);
-    }
-
-    @Test
-    void negation_shouldNotDepend_skipsTriple() {
-        String text = "The module should not depend on external services.";
-        List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, WING, DRAWER_ID);
-
-        assertTrue(triples.isEmpty(),
-            "Negated dependency should not produce a triple: " + triples);
-    }
-
-    @Test
-    void negation_avoid_skipsTriple() {
-        String text = "Avoid using deprecated APIs in the codebase.";
-        List<TripleExtractor.ExtractedTriple> triples = TripleExtractor.extract(text, WING, DRAWER_ID);
-
-        assertTrue(triples.isEmpty(),
-            "Avoidance should not produce a 'uses' triple: " + triples);
+            "Negated/avoidance sentence should not produce a triple: " + triples);
     }
 
     // ── Object trimming tests ─────────────────────────────────────────────

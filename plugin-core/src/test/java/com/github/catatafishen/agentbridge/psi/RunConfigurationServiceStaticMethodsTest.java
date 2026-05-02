@@ -6,9 +6,13 @@ import com.google.gson.JsonPrimitive;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -99,22 +103,23 @@ class RunConfigurationServiceStaticMethodsTest {
             assertNull(call(args, "application"));
         }
 
-        @Test
-        void gitCommandBlocked() throws Exception {
-            JsonObject args = new JsonObject();
-            args.addProperty("program_args", "git push origin main");
-            String result = call(args, "application");
-            assertNotNull(result);
-            assertTrue(result.startsWith("Error:"));
+        static Stream<Arguments> blockedCommands() {
+            return Stream.of(
+                Arguments.of("git push origin main", "application", "Error:"),
+                Arguments.of("test --info", "gradle", "run_tests"),
+                Arguments.of("sed -i 's/foo/bar/g' file.txt", "application", "edit_text")
+            );
         }
 
-        @Test
-        void gradleTestTaskBlocked() throws Exception {
+        @ParameterizedTest
+        @MethodSource("blockedCommands")
+        void blockedCommandDetected(String programArgs, String configType, String expectedSubstring) throws Exception {
             JsonObject args = new JsonObject();
-            args.addProperty("program_args", "test --info");
-            String result = call(args, "gradle");
+            args.addProperty("program_args", programArgs);
+            String result = call(args, configType);
             assertNotNull(result);
-            assertTrue(result.contains("run_tests"));
+            assertTrue(result.contains(expectedSubstring),
+                "Expected result to contain '" + expectedSubstring + "' but was: " + result);
         }
 
         @Test
@@ -123,15 +128,6 @@ class RunConfigurationServiceStaticMethodsTest {
             args.addProperty("program_args", "test --info");
             // "test" alone doesn't match general abuse patterns, only gradle-specific check
             assertNull(call(args, "application"));
-        }
-
-        @Test
-        void sedCommandBlocked() throws Exception {
-            JsonObject args = new JsonObject();
-            args.addProperty("program_args", "sed -i 's/foo/bar/g' file.txt");
-            String result = call(args, "application");
-            assertNotNull(result);
-            assertTrue(result.contains("edit_text"));
         }
 
         @Test
