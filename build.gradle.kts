@@ -102,6 +102,15 @@ sonar {
             "**/psi/review/ChangeNavigator.java",
             "**/services/ToolCallStatisticsBackfill.java"
         ).mapIndexed { i, path -> IgnoredIssue("s3776_$i", "java:S3776", path) } + listOf(
+            // java:S6541 ("Brain Method") — same protocol/codec methods that are
+            // ignored above for S3776. Sonar reports the same complexity in two
+            // shapes; both are accepted for the same reason (state-machine shape
+            // mirrors the wire protocol; splitting hurts readability).
+            "**/agent/claude/ClaudeCliClient.java",
+            "**/session/exporters/OpenCodeClientExporter.java",
+            "**/session/exporters/CopilotClientExporter.java",
+            "**/session/exporters/KiroClientExporter.java"
+        ).mapIndexed { i, path -> IgnoredIssue("s6541_$i", "java:S6541", path) } + listOf(
             IgnoredIssue("ts_s3776_render", "typescript:S3776", "**/chat-ui/src/renderMarkdown.ts"),
             IgnoredIssue("ts_s3776_batch", "typescript:S3776", "**/chat-ui/src/BatchRenderer.ts"),
             IgnoredIssue("ts_s2004_app", "typescript:S2004", "**/chat-ui/src/web-app.ts")
