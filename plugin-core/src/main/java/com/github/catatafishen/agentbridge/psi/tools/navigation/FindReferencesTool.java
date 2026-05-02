@@ -87,7 +87,7 @@ public final class FindReferencesTool extends NavigationTool {
         int offset = pagination[1];
 
         showSearchFeedback("🔍 Finding references: " + symbol);
-        String result = ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
+        String result = ApplicationManager.getApplication().<String>runReadAction(() -> {
             List<String> results = new ArrayList<>();
             String basePath = project.getBasePath();
             GlobalSearchScope scope = resolveScope(scopeName);
@@ -117,8 +117,7 @@ public final class FindReferencesTool extends NavigationTool {
         for (PsiReference ref : ReferencesSearch.search(definition, scope).findAll()) {
             if (results.size() >= maxResults) break;
             String entry = buildReferenceEntry(ref, filePattern, compiledGlob, basePath);
-            if (entry != null) {
-                if (seen++ < offset) continue;
+            if (entry != null && seen++ >= offset) {
                 results.add(entry);
             }
         }
@@ -131,20 +130,9 @@ public final class FindReferencesTool extends NavigationTool {
         int[] seen = {0};
         PsiSearchHelper.getInstance(project).processElementsWithWord(
             (element, offsetInElement) -> {
-                com.intellij.psi.PsiFile file = element.getContainingFile();
-                if (file == null || file.getVirtualFile() == null) return true;
-                String relPath = safeRelativize(basePath, file.getVirtualFile().getPath());
-                if (!filePattern.isEmpty() && ToolUtils.doesNotMatchGlob(relPath, filePattern, compiledGlob))
-                    return true;
-
-                com.intellij.openapi.editor.Document doc = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance()
-                    .getDocument(file.getVirtualFile());
-                if (doc != null) {
-                    int line = doc.getLineNumber(element.getTextOffset()) + 1;
-                    String lineText = ToolUtils.getLineText(doc, line - 1);
-                    String entry = String.format(FORMAT_LINE_REF, relPath, line, lineText);
-                    if (!results.contains(entry)) {
-                        if (seen[0]++ < offset) return true;
+                String entry = buildWordEntry(element, filePattern, compiledGlob, basePath);
+                if (entry != null && !results.contains(entry)) {
+                    if (seen[0]++ >= offset) {
                         results.add(entry);
                     }
                 }
@@ -152,5 +140,23 @@ public final class FindReferencesTool extends NavigationTool {
             },
             scope, symbol, UsageSearchContext.IN_CODE, true
         );
+    }
+
+    /**
+     * Builds a reference entry for a word-search element, or returns null if filtered out.
+     */
+    private @Nullable String buildWordEntry(com.intellij.psi.PsiElement element,
+                                            String filePattern, Pattern compiledGlob, String basePath) {
+        com.intellij.psi.PsiFile file = element.getContainingFile();
+        if (file == null || file.getVirtualFile() == null) return null;
+        String relPath = safeRelativize(basePath, file.getVirtualFile().getPath());
+        if (!filePattern.isEmpty() && ToolUtils.doesNotMatchGlob(relPath, filePattern, compiledGlob)) return null;
+
+        com.intellij.openapi.editor.Document doc = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance()
+            .getDocument(file.getVirtualFile());
+        if (doc == null) return null;
+        int line = doc.getLineNumber(element.getTextOffset()) + 1;
+        String lineText = ToolUtils.getLineText(doc, line - 1);
+        return String.format(FORMAT_LINE_REF, relPath, line, lineText);
     }
 }

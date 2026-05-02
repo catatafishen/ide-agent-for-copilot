@@ -49,6 +49,14 @@ public final class SearchTextTool extends NavigationTool {
      */
     private static final int MAX_OUTPUT_BYTES = 256 * 1024; // 256 KB
 
+    /**
+     * Encapsulates the user-provided search configuration (resolves S107: too many params).
+     */
+    private record SearchConfig(String query, String filePattern, boolean isRegex,
+                                boolean caseSensitive, int maxResults, int offset,
+                                int contextLines, boolean followAgent) {
+    }
+
     private record SearchParams(Pattern pattern, String basePath, String filePattern,
                                 Pattern compiledFileGlob,
                                 List<String> results, @Nullable List<MatchPosition> positions,
@@ -119,6 +127,8 @@ public final class SearchTextTool extends NavigationTool {
         int contextLines = args.has(PARAM_CONTEXT_LINES) ? args.get(PARAM_CONTEXT_LINES).getAsInt() : 0;
         boolean followAgent = ActiveAgentManager.getFollowAgentFiles(project);
 
+        var cfg = new SearchConfig(query, filePattern, isRegex, caseSensitive, maxResults, offset, contextLines, followAgent);
+
         showSearchFeedback("Searching text: " + query);
         // NonBlockingReadAction: iterating all project files can hold the read lock for several
         // seconds on large projects. runReadAction() would block ALL write actions (EDT, indexing,
@@ -126,39 +136,38 @@ public final class SearchTextTool extends NavigationTool {
         // executeSynchronously() yields to write actions when they need to run, then restarts the
         // search (performSearch creates fresh collections, so restart is safe).
         String result = ReadAction.nonBlocking(
-            () -> performSearch(query, filePattern, isRegex, caseSensitive, maxResults, offset, contextLines, followAgent)
+            () -> performSearch(cfg)
         ).executeSynchronously();
         showSearchFeedback("Text search complete: " + query);
         return result;
     }
 
-    private String performSearch(String query, String filePattern, boolean isRegex,
-                                 boolean caseSensitive, int maxResults, int offset,
-                                 int contextLines, boolean followAgent) {
+    private String performSearch(SearchConfig cfg) {
         String basePath = project.getBasePath();
         if (basePath == null) return ERROR_NO_PROJECT_PATH;
 
-        Pattern pattern = compileSearchPattern(query, isRegex, caseSensitive);
-        if (pattern == null) return "Error: invalid regex: " + query;
+        Pattern pattern = compileSearchPattern(cfg.query(), cfg.isRegex(), cfg.caseSensitive());
+        if (pattern == null) return "Error: invalid regex: " + cfg.query();
 
         List<String> results = new ArrayList<>();
-        List<MatchPosition> positions = followAgent ? new ArrayList<>() : null;
+        List<MatchPosition> positions = cfg.followAgent() ? new ArrayList<>() : null;
         AtomicInteger skippedLarge = new AtomicInteger(0);
         AtomicInteger totalOutputBytes = new AtomicInteger(0);
-        var compiledFileGlob = filePattern.isEmpty() ? null : ToolUtils.compileGlob(filePattern);
-        var params = new SearchParams(pattern, basePath, filePattern, compiledFileGlob, results, positions, skippedLarge, maxResults, offset, new AtomicInteger(0), contextLines, totalOutputBytes);
+        var compiledFileGlob = cfg.filePattern().isEmpty() ? null : ToolUtils.compileGlob(cfg.filePattern());
+        var params = new SearchParams(pattern, basePath, cfg.filePattern(), compiledFileGlob, results, positions,
+            skippedLarge, cfg.maxResults(), cfg.offset(), new AtomicInteger(0), cfg.contextLines(), totalOutputBytes);
         ProjectFileIndex.getInstance(project).iterateContent(vf -> processFile(vf, params));
 
         if (positions != null && !positions.isEmpty()) {
-            showResultsInUsageView(query, positions);
+            showResultsInUsageView(cfg.query(), positions);
         }
 
         StringBuilder sb = new StringBuilder();
         if (results.isEmpty()) {
-            sb.append("No matches found for '").append(query).append("'");
+            sb.append("No matches found for '").append(cfg.query()).append("'");
         } else {
             sb.append(results.size()).append(" matches:\n");
-            String separator = contextLines > 0 ? "\n---\n" : "\n";
+            String separator = cfg.contextLines() > 0 ? "\n---\n" : "\n";
             sb.append(String.join(separator, results));
         }
         if (skippedLarge.get() > 0) {
@@ -167,9 +176,9 @@ public final class SearchTextTool extends NavigationTool {
         if (totalOutputBytes.get() >= MAX_OUTPUT_BYTES) {
             sb.append("\n(output truncated at 256 KB — use a more specific query or file_pattern to narrow results)");
         }
-        if (results.size() >= maxResults) {
-            sb.append("\n\n(Showing ").append(maxResults).append(" results starting at offset ").append(offset)
-                .append(". Use offset=").append(offset + maxResults).append(" to see more)");
+        if (results.size() >= cfg.maxResults()) {
+            sb.append("\n\n(Showing ").append(cfg.maxResults()).append(" results starting at offset ").append(cfg.offset())
+                .append(". Use offset=").append(cfg.offset() + cfg.maxResults()).append(" to see more)");
         }
         return sb.toString();
     }
