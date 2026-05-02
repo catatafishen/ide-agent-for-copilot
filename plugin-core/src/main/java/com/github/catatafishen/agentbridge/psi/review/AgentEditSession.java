@@ -354,6 +354,14 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
         return snapshots.get(vf.getPath());
     }
 
+    /**
+     * Returns the approval state of a file, or PENDING if not tracked.
+     */
+    public @NotNull ApprovalState getApprovalState(@NotNull VirtualFile vf) {
+        ApprovalState state = approvals.get(vf.getPath());
+        return state != null ? state : ApprovalState.PENDING;
+    }
+
     public @NotNull Set<String> getModifiedFilePaths() {
         return Collections.unmodifiableSet(snapshots.keySet());
     }
@@ -467,7 +475,12 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
      * Flips a single row to APPROVED. Keeps the row visible.
      */
     public void acceptFile(@NotNull String path) {
-        if (!pathIsTracked(path)) return;
+        if (!pathIsTracked(path)) {
+            LOG.warn("acceptFile: path not tracked, accept has no effect. " +
+                "Requested: '" + path + "', tracked snapshot keys: " + snapshots.keySet().size() +
+                ", newFiles: " + newFiles.size() + ", deletedFiles: " + deletedFiles.size());
+            return;
+        }
         approvals.put(path, ApprovalState.APPROVED);
         VirtualFile vf = LocalFileSystem.getInstance().findFileByPath(path);
         if (vf != null) {
