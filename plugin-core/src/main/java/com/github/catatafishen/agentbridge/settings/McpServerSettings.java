@@ -34,6 +34,19 @@ public final class McpServerSettings implements PersistentStateComponent<McpServ
         myState.port = port;
     }
 
+    /**
+     * When true, the configured port is treated as a strict requirement.
+     * If the port is already in use, the server will fail to start with an error
+     * rather than silently auto-allocating the next available port.
+     */
+    public boolean isStaticPort() {
+        return myState.staticPort;
+    }
+
+    public void setStaticPort(boolean staticPort) {
+        myState.staticPort = staticPort;
+    }
+
     public boolean isAutoStart() {
         return myState.autoStart;
     }
@@ -212,6 +225,7 @@ public final class McpServerSettings implements PersistentStateComponent<McpServ
 
     public static class State {
         private int port = DEFAULT_PORT;
+        private boolean staticPort = false;
         private boolean autoStart = false;
         private boolean debugLoggingEnabled = false;
         private TransportMode transportMode = TransportMode.STREAMABLE_HTTP;
@@ -234,6 +248,14 @@ public final class McpServerSettings implements PersistentStateComponent<McpServ
 
         public void setPort(int port) {
             this.port = port;
+        }
+
+        public boolean isStaticPort() {
+            return staticPort;
+        }
+
+        public void setStaticPort(boolean staticPort) {
+            this.staticPort = staticPort;
         }
 
         public boolean isAutoStart() {

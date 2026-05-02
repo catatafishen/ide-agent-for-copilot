@@ -84,6 +84,7 @@ public final class ChatWebServer implements Disposable {
     private static final String HDR_ACCESS_CONTROL_ORIGIN = "Access-Control-Allow-Origin";
     private static final String CACHE_NO_CACHE = "no-cache";
     private static final String CACHE_PUBLIC = "public, max-age=86400";
+    private static final String BIND_ALL_INTERFACES = "0.0.0.0";
 
     private final Project project;
     private HttpsServer httpsServer;
@@ -278,6 +279,7 @@ public final class ChatWebServer implements Disposable {
         if (running) return;
         ChatWebServerSettings settings = ChatWebServerSettings.getInstance(project);
         int port = settings.getPort();
+        boolean isStatic = settings.isStaticPort();
         boolean https = settings.isHttpsEnabled();
 
         SSLContext sslContext = null;
@@ -292,16 +294,13 @@ public final class ChatWebServer implements Disposable {
         var executor = Executors.newCachedThreadPool();
         serverExecutor = executor;
 
-        IOException lastError = null;
-        for (int attempt = 0; attempt < 10; attempt++) {
-            int tryPort = port + attempt;
+        if (isStatic) {
+            // Static port mode: fail immediately if port is unavailable
             try {
                 if (https) {
-                    httpsServer = HttpsServer.create(new InetSocketAddress("0.0.0.0", tryPort), 0);
+                    httpsServer = HttpsServer.create(new InetSocketAddress(BIND_ALL_INTERFACES, port), 0);
                 }
-                httpServer = HttpServer.create(new InetSocketAddress("0.0.0.0", tryPort + (https ? 1 : 0)), 0);
-                if (attempt > 0) settings.setPort(tryPort);
-                break;
+                httpServer = HttpServer.create(new InetSocketAddress(BIND_ALL_INTERFACES, port + (https ? 1 : 0)), 0);
             } catch (IOException e) {
                 if (httpsServer != null) {
                     httpsServer.stop(0);
@@ -311,12 +310,37 @@ public final class ChatWebServer implements Disposable {
                     httpServer.stop(0);
                     httpServer = null;
                 }
-                lastError = e;
+                throw new IOException("Chat Web Server port " + port + " is already in use. "
+                    + "Disable 'Static Port' in settings to allow automatic port allocation, "
+                    + "or free port " + port + " and try again.", e);
             }
+        } else {
+            // Dynamic mode: try configured port, then auto-allocate
+            IOException lastError = null;
+            for (int attempt = 0; attempt < 10; attempt++) {
+                int tryPort = port + attempt;
+                try {
+                    if (https) {
+                        httpsServer = HttpsServer.create(new InetSocketAddress(BIND_ALL_INTERFACES, tryPort), 0);
+                    }
+                    httpServer = HttpServer.create(new InetSocketAddress(BIND_ALL_INTERFACES, tryPort + (https ? 1 : 0)), 0);
+                    if (attempt > 0) settings.setPort(tryPort);
+                    break;
+                } catch (IOException e) {
+                    if (httpsServer != null) {
+                        httpsServer.stop(0);
+                        httpsServer = null;
+                    }
+                    if (httpServer != null) {
+                        httpServer.stop(0);
+                        httpServer = null;
+                    }
+                    lastError = e;
+                }
+            }
+            boolean bound = https ? (httpsServer != null && httpServer != null) : httpServer != null;
+            if (!bound) throw new IOException("Cannot bind Chat Web Server to any port near " + port, lastError);
         }
-
-        boolean bound = https ? (httpsServer != null && httpServer != null) : httpServer != null;
-        if (!bound) throw new IOException("Cannot bind Chat Web Server to any port near " + port, lastError);
 
         httpServer.setExecutor(executor);
         if (https) {

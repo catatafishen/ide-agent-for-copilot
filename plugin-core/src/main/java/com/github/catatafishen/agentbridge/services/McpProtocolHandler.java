@@ -110,9 +110,10 @@ public final class McpProtocolHandler {
 
     private JsonObject handleInitialize(JsonObject msg) {
         JsonObject serverInfo = new JsonObject();
-        serverInfo.addProperty("name", SERVER_NAME);
+        String projectName = project.getName();
+        serverInfo.addProperty("name", SERVER_NAME + " (" + projectName + ")");
         serverInfo.addProperty("version", SERVER_VERSION);
-        serverInfo.addProperty(KEY_DESCRIPTION, "Code Intelligence tools for IntelliJ IDEA");
+        serverInfo.addProperty(KEY_DESCRIPTION, "Code Intelligence tools for IntelliJ IDEA — project: " + projectName);
 
         JsonObject capabilities = new JsonObject();
         JsonObject toolsCap = new JsonObject();
