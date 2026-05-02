@@ -10,6 +10,7 @@ import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -147,6 +148,8 @@ class McpHttpServerStaticMethodsTest {
             assertEquals("ok", parsed.get("status").getAsString());
             assertEquals("SSE", parsed.get("transport").getAsString());
             assertEquals("my-project", parsed.get("project").getAsString());
+            assertEquals("agentbridge", parsed.get("server").getAsString());
+            assertNotNull(parsed.get("version").getAsString());
         }
 
         @Test
@@ -156,6 +159,7 @@ class McpHttpServerStaticMethodsTest {
             assertEquals("stopped", parsed.get("status").getAsString());
             assertEquals("none", parsed.get("transport").getAsString());
             assertEquals("test-project", parsed.get("project").getAsString());
+            assertEquals("agentbridge", parsed.get("server").getAsString());
         }
 
         @Test
@@ -182,10 +186,10 @@ class McpHttpServerStaticMethodsTest {
         }
 
         @Test
-        void hasThreeFields() {
+        void hasFiveFields() {
             String json = McpHttpServer.buildHealthResponse(true, "SSE", "proj");
             JsonObject parsed = JsonParser.parseString(json).getAsJsonObject();
-            assertEquals(3, parsed.size(), "Health response should have exactly 3 fields");
+            assertEquals(5, parsed.size(), "Health response should have exactly 5 fields: status, transport, project, server, version");
         }
     }
 }

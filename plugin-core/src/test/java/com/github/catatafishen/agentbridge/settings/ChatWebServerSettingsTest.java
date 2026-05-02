@@ -59,6 +59,21 @@ class ChatWebServerSettingsTest {
     }
 
     @Test
+    @DisplayName("staticPort defaults to false")
+    void defaultStaticPort() {
+        assertFalse(settings.isStaticPort());
+    }
+
+    @Test
+    @DisplayName("setStaticPort round-trip")
+    void setStaticPortRoundTrip() {
+        settings.setStaticPort(true);
+        assertTrue(settings.isStaticPort());
+        settings.setStaticPort(false);
+        assertFalse(settings.isStaticPort());
+    }
+
+    @Test
     @DisplayName("VAPID private key defaults to empty string")
     void vapidPrivateKeyDefault() {
         assertEquals("", settings.getVapidPrivateKey());

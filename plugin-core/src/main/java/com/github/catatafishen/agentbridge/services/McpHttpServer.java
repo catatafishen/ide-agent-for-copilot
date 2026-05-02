@@ -65,29 +65,13 @@ public final class McpHttpServer implements Disposable, McpServerControl {
             if (running) return;
             McpServerSettings settings = McpServerSettings.getInstance(project);
             int port = settings.getPort();
+            boolean isStatic = settings.isStaticPort();
             activeTransportMode = settings.getTransportMode();
 
             protocolHandler = new McpProtocolHandler(project);
 
-            // Try to bind to the configured port; if it fails, auto-allocate the next available port
-            int actualPort = port;
-            IOException lastError = null;
-            for (int attempt = 0; attempt < 100; attempt++) {
-                try {
-                    httpServer = HttpServer.create(new InetSocketAddress("127.0.0.1", actualPort), 0);
-                    break;
-                } catch (IOException e) {
-                    lastError = e;
-                    actualPort++;
-                }
-            }
-
-            if (httpServer == null) {
-                throw new IOException("Failed to bind MCP server to any port starting from " + port, lastError);
-            }
-
-            // If port changed, save it to settings
-            if (actualPort != port) {
+            int actualPort = bindServerPort(port, isStatic);
+            if (!isStatic && actualPort != port) {
                 settings.setPort(actualPort);
                 LOG.info("[MCP] port conflict: " + port + " was in use; allocated " + actualPort + " instead for project: " + project.getBasePath());
             }
@@ -126,6 +110,37 @@ public final class McpHttpServer implements Disposable, McpServerControl {
         // is a deadlock risk: syncPublisher dispatches listeners synchronously, and any listener
         // that re-enters start()/stop() from another thread would deadlock on the monitor.
         project.getMessageBus().syncPublisher(STATUS_TOPIC).serverStatusChanged();
+    }
+
+    /**
+     * Attempts to bind to the given port. In static mode, fails immediately if unavailable.
+     * In dynamic mode, tries up to 100 consecutive ports starting from the configured one.
+     * Sets {@link #httpServer} on success and returns the actual bound port.
+     */
+    private int bindServerPort(int port, boolean isStatic) throws IOException {
+        if (isStatic) {
+            try {
+                httpServer = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
+            } catch (IOException e) {
+                throw new IOException("MCP server port " + port + " is already in use. "
+                    + "Disable 'Static Port' in settings to allow automatic port allocation, "
+                    + "or free port " + port + " and try again.", e);
+            }
+            return port;
+        }
+
+        int actualPort = port;
+        IOException lastError = null;
+        for (int attempt = 0; attempt < 100; attempt++) {
+            try {
+                httpServer = HttpServer.create(new InetSocketAddress("127.0.0.1", actualPort), 0);
+                return actualPort;
+            } catch (IOException e) {
+                lastError = e;
+                actualPort++;
+            }
+        }
+        throw new IOException("Failed to bind MCP server to any port starting from " + port, lastError);
     }
 
     /**
@@ -256,6 +271,8 @@ public final class McpHttpServer implements Disposable, McpServerControl {
         obj.addProperty("status", serverRunning ? "ok" : "stopped");
         obj.addProperty("transport", transportName);
         obj.addProperty("project", projectName);
+        obj.addProperty("server", "agentbridge");
+        obj.addProperty("version", com.github.catatafishen.agentbridge.BuildInfo.getVersion());
         return obj.toString();
     }
 

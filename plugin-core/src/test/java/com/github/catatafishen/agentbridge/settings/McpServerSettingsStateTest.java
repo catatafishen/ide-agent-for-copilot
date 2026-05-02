@@ -62,6 +62,12 @@ class McpServerSettingsStateTest {
     }
 
     @Test
+    @DisplayName("staticPort defaults to false")
+    void defaultStaticPort() {
+        assertFalse(settings.isStaticPort());
+    }
+
+    @Test
     @DisplayName("color keys default to null")
     void defaultColorKeys() {
         assertNull(settings.getKindReadColorKey());
@@ -77,6 +83,15 @@ class McpServerSettingsStateTest {
     void portRoundTrip() {
         settings.setPort(9000);
         assertEquals(9000, settings.getPort());
+    }
+
+    @Test
+    @DisplayName("staticPort round-trips correctly")
+    void staticPortRoundTrip() {
+        settings.setStaticPort(true);
+        assertTrue(settings.isStaticPort());
+        settings.setStaticPort(false);
+        assertFalse(settings.isStaticPort());
     }
 
     @Test
