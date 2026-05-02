@@ -12,6 +12,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Language-agnostic call hierarchy support.
@@ -30,27 +32,28 @@ public class CallHierarchySupport {
     }
 
     /**
-     * Finds all callers of the named element at the given file/line.
+     * Finds all callers of the named element at the given file/line, up to the given depth.
      * Must be called inside a read action.
+     *
+     * @param depth how many levels to traverse (1 = direct callers only)
      */
     public static String getCallHierarchy(@NotNull Project project, @NotNull String elementName,
-                                          @NotNull String filePath, int line) {
+                                          @NotNull String filePath, int line, int depth) {
         PsiNameIdentifierOwner element = resolveNamedElementAtLocation(project, filePath, line, elementName);
         if (element == null) {
             return "Error: Could not find '" + elementName + "' at " + filePath + ":" + line;
         }
 
-        Collection<PsiReference> references = ReferencesSearch.search(
-            element, GlobalSearchScope.projectScope(project)).findAll();
-        if (references.isEmpty()) {
-            return "No callers found for: " + formatElementSignature(element);
-        }
-
         String basePath = project.getBasePath();
         StringBuilder sb = new StringBuilder();
-        sb.append("Callers of ").append(formatElementSignature(element)).append(":\n\n");
-        for (PsiReference ref : references) {
-            appendCallerInfo(sb, ref, basePath);
+        sb.append("Callers of ").append(formatElementSignature(element)).append(":\n");
+
+        Set<PsiElement> visited = new HashSet<>();
+        visited.add(element);
+        collectCallers(sb, element, project, basePath, visited, 1, depth);
+
+        if (sb.indexOf("\n  ") == -1) {
+            return "No callers found for: " + formatElementSignature(element);
         }
         return sb.toString();
     }
@@ -64,16 +67,28 @@ public class CallHierarchySupport {
         return ToolUtils.findNamedElement(ctx, elementName);
     }
 
-    private static void appendCallerInfo(@NotNull StringBuilder sb, @NotNull PsiReference ref,
-                                         @Nullable String basePath) {
-        PsiElement element = ref.getElement();
-        // Walk up the PSI tree to find the nearest named containing element (function/method/class)
-        PsiNamedElement containingNamed = PsiTreeUtil.getParentOfType(element, PsiNamedElement.class);
+    private static void collectCallers(@NotNull StringBuilder sb, @NotNull PsiElement target,
+                                       @NotNull Project project, @Nullable String basePath,
+                                       @NotNull Set<PsiElement> visited, int currentDepth, int maxDepth) {
+        Collection<PsiReference> references = ReferencesSearch.search(
+            target, GlobalSearchScope.projectScope(project)).findAll();
 
-        sb.append("  ");
-        sb.append(containingNamed != null ? containingNamed.getName() : "(top level)");
-        appendFileLocation(sb, element, basePath);
-        sb.append("\n");
+        String indent = "  ".repeat(currentDepth);
+        for (PsiReference ref : references) {
+            PsiElement element = ref.getElement();
+            PsiNamedElement containingNamed = PsiTreeUtil.getParentOfType(element, PsiNamedElement.class);
+
+            sb.append(indent);
+            sb.append(containingNamed != null ? containingNamed.getName() : "(top level)");
+            appendFileLocation(sb, element, basePath);
+            sb.append("\n");
+
+            // Recurse into callers if we haven't reached max depth and the containing element is new
+            if (currentDepth < maxDepth && containingNamed instanceof PsiNameIdentifierOwner named
+                && visited.add(named)) {
+                collectCallers(sb, named, project, basePath, visited, currentDepth + 1, maxDepth);
+            }
+        }
     }
 
     private static void appendFileLocation(@NotNull StringBuilder sb, @NotNull PsiElement element,
