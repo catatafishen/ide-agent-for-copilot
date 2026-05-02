@@ -807,6 +807,7 @@ public final class ToolCallStatisticsService implements Disposable {
      */
     public record BranchAggregate(
         @NotNull String branch,
+        @NotNull LocalDate firstDetectedDate,
         int turns,
         long inputTokens,
         long outputTokens,
@@ -820,8 +821,8 @@ public final class ToolCallStatisticsService implements Disposable {
 
     /**
      * Queries per-branch totals across the date range. One row per distinct
-     * {@code git_branch} value (NULL branches excluded). Sorted by total
-     * premium-request cost descending, so the most expensive branches lead.
+     * {@code git_branch} value (NULL branches excluded). Includes the first
+     * date the branch was detected in plugin stats for age-based ordering.
      *
      * @param startDate inclusive start date (YYYY-MM-DD)
      * @param endDate   inclusive end date (YYYY-MM-DD)
@@ -832,21 +833,29 @@ public final class ToolCallStatisticsService implements Disposable {
         @NotNull String startDate, @NotNull String endDate) {
         if (connection == null) return List.of();
         String sql = """
-            SELECT git_branch,
-                   COUNT(*)              AS turns,
-                   SUM(input_tokens)     AS input_tokens,
-                   SUM(output_tokens)    AS output_tokens,
-                   SUM(tool_calls)       AS tool_calls,
-                   SUM(duration_ms)      AS duration_ms,
-                   SUM(lines_added)      AS lines_added,
-                   SUM(lines_removed)    AS lines_removed,
-                   SUM(premium_requests) AS premium_requests
-            FROM turn_stats
-            WHERE date BETWEEN ? AND ?
-              AND git_branch IS NOT NULL
-              AND git_branch <> ''
-            GROUP BY git_branch
-            ORDER BY premium_requests DESC, git_branch
+            SELECT ranged.git_branch,
+                   first_seen.first_detected_date,
+                   COUNT(*)                    AS turns,
+                   SUM(ranged.input_tokens)    AS input_tokens,
+                   SUM(ranged.output_tokens)   AS output_tokens,
+                   SUM(ranged.tool_calls)      AS tool_calls,
+                   SUM(ranged.duration_ms)     AS duration_ms,
+                   SUM(ranged.lines_added)     AS lines_added,
+                   SUM(ranged.lines_removed)   AS lines_removed,
+                   SUM(ranged.premium_requests) AS premium_requests
+            FROM turn_stats ranged
+            JOIN (
+                SELECT git_branch, MIN(date) AS first_detected_date
+                FROM turn_stats
+                WHERE git_branch IS NOT NULL
+                  AND git_branch <> ''
+                GROUP BY git_branch
+            ) first_seen ON first_seen.git_branch = ranged.git_branch
+            WHERE ranged.date BETWEEN ? AND ?
+              AND ranged.git_branch IS NOT NULL
+              AND ranged.git_branch <> ''
+            GROUP BY ranged.git_branch, first_seen.first_detected_date
+            ORDER BY premium_requests DESC, ranged.git_branch
             """;
         List<BranchAggregate> results = new ArrayList<>();
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
@@ -856,6 +865,7 @@ public final class ToolCallStatisticsService implements Disposable {
                 while (rs.next()) {
                     results.add(new BranchAggregate(
                         rs.getString("git_branch"),
+                        LocalDate.parse(rs.getString("first_detected_date")),
                         rs.getInt("turns"),
                         rs.getLong("input_tokens"),
                         rs.getLong("output_tokens"),

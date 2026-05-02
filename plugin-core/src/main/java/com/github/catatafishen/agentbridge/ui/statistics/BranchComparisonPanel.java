@@ -30,16 +30,17 @@ class BranchComparisonPanel extends JBPanel<BranchComparisonPanel> {
 
     private final transient Project project;
     private final ComboBox<UsageStatisticsData.TimeRange> rangeCombo;
+    private final ComboBox<UsageStatisticsData.BranchSort> sortCombo;
     private final Map<UsageStatisticsData.Metric, BranchComparisonChart> charts =
         new EnumMap<>(UsageStatisticsData.Metric.class);
     private final JBLabel hintLabel;
+    private UsageStatisticsData.BranchSnapshot currentSnapshot;
 
     BranchComparisonPanel(Project project) {
         super(new BorderLayout());
         this.project = project;
         setBorder(JBUI.Borders.empty(12));
 
-        // --- NORTH: period selector ---
         JPanel toolbar = new JPanel();
         toolbar.setLayout(new BoxLayout(toolbar, BoxLayout.X_AXIS));
         toolbar.add(new JBLabel("Period:"));
@@ -50,16 +51,27 @@ class BranchComparisonPanel extends JBPanel<BranchComparisonPanel> {
             UsageStatisticsData.TimeRange::label);
         rangeCombo.addActionListener(e -> reload());
         toolbar.add(rangeCombo);
+        toolbar.add(Box.createHorizontalStrut(JBUI.scale(16)));
+        toolbar.add(new JBLabel("Order by:"));
+        toolbar.add(Box.createHorizontalStrut(JBUI.scale(6)));
+        sortCombo = StatisticsComboFactory.createLabeledCombo(
+            UsageStatisticsData.BranchSort.values(),
+            UsageStatisticsData.BranchSort.BAR_VALUE,
+            UsageStatisticsData.BranchSort::label);
+        sortCombo.addActionListener(e -> {
+            if (currentSnapshot != null) {
+                updateCharts(currentSnapshot);
+            }
+        });
+        toolbar.add(sortCombo);
         add(toolbar, BorderLayout.NORTH);
 
-        // --- CENTER: scrollable vertical list of charts ---
-        JPanel chartsPanel = new JPanel();
+        BranchChartsPanel chartsPanel = new BranchChartsPanel();
         chartsPanel.setLayout(new BoxLayout(chartsPanel, BoxLayout.Y_AXIS));
 
         for (UsageStatisticsData.Metric metric : UsageStatisticsData.Metric.values()) {
             BranchComparisonChart chart = new BranchComparisonChart(metric.displayName(), metric);
             chart.setPreferredSize(null);
-            chart.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
             chart.setAlignmentX(Component.LEFT_ALIGNMENT);
             charts.put(metric, chart);
             if (chartsPanel.getComponentCount() > 0) {
@@ -77,6 +89,7 @@ class BranchComparisonPanel extends JBPanel<BranchComparisonPanel> {
 
         JBScrollPane scrollPane = new JBScrollPane(chartsPanel);
         scrollPane.setBorder(JBUI.Borders.empty());
+        scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         scrollPane.getVerticalScrollBar().setUnitIncrement(JBUI.scale(16));
         add(scrollPane, BorderLayout.CENTER);
 
@@ -104,8 +117,13 @@ class BranchComparisonPanel extends JBPanel<BranchComparisonPanel> {
     }
 
     private void updateCharts(UsageStatisticsData.BranchSnapshot snapshot) {
+        currentSnapshot = snapshot;
+        UsageStatisticsData.BranchSort sort =
+            (UsageStatisticsData.BranchSort) sortCombo.getSelectedItem();
+        if (sort == null) return;
+
         for (BranchComparisonChart chart : charts.values()) {
-            chart.update(snapshot);
+            chart.update(snapshot, sort);
         }
 
         if (snapshot.unattributed() > 0) {
@@ -117,6 +135,34 @@ class BranchComparisonPanel extends JBPanel<BranchComparisonPanel> {
                 + " branch to start tracking per-branch usage.");
         } else {
             hintLabel.setText(" ");
+        }
+    }
+
+    private static final class BranchChartsPanel extends JPanel implements Scrollable {
+
+        @Override
+        public Dimension getPreferredScrollableViewportSize() {
+            return getPreferredSize();
+        }
+
+        @Override
+        public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return JBUI.scale(16);
+        }
+
+        @Override
+        public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return visibleRect.height;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportWidth() {
+            return true;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportHeight() {
+            return false;
         }
     }
 }
