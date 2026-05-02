@@ -40,11 +40,11 @@ class ReviewItemDerivationTest {
         Map<String, Integer> linesAdded,
         Map<String, Integer> linesRemoved
     ) {
-        return AgentEditSession.buildReviewItems(
+        return ReviewItemBuilder.buildReviewItems(
             snapshots,
             newFiles,
             deletedFiles,
-            new AgentEditSession.EditMetrics(
+            new ReviewItemBuilder.EditMetrics(
                 new HashMap<>(),
                 new HashMap<>(),
                 new HashMap<>(linesAdded),

@@ -407,66 +407,13 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
 
     public @NotNull List<ReviewItem> getReviewItems() {
         normalizeTrackedState();
-        return buildReviewItems(
+        return ReviewItemBuilder.buildReviewItems(
             snapshots,
             newFiles,
             deletedFiles,
-            new EditMetrics(approvals, lastEditedAt, linesAdded, linesRemoved),
+            new ReviewItemBuilder.EditMetrics(approvals, lastEditedAt, linesAdded, linesRemoved),
             project.getBasePath()
         );
-    }
-
-    /**
-     * Per-path edit metrics passed together to keep review-building method
-     * signatures within the 7-parameter limit (Sonar S107).
-     */
-    record EditMetrics(
-        @NotNull Map<String, ApprovalState> approvals,
-        @NotNull Map<String, Long> lastEditedAt,
-        @NotNull Map<String, Integer> linesAdded,
-        @NotNull Map<String, Integer> linesRemoved
-    ) {
-    }
-
-    static @NotNull List<ReviewItem> buildReviewItems(
-        @NotNull Map<String, String> snapshots,
-        @NotNull Set<String> newFiles,
-        @NotNull Map<String, String> deletedFiles,
-        @NotNull EditMetrics metrics,
-        @Nullable String basePath
-    ) {
-        List<ReviewItem> items = new ArrayList<>();
-
-        for (Map.Entry<String, String> entry : snapshots.entrySet()) {
-            String path = entry.getKey();
-            if (newFiles.contains(path) || deletedFiles.containsKey(path)) continue;
-            items.add(buildItem(path, basePath, ReviewItem.Status.MODIFIED, entry.getValue(), metrics));
-        }
-        for (String path : newFiles) {
-            if (deletedFiles.containsKey(path)) continue;
-            items.add(buildItem(path, basePath, ReviewItem.Status.ADDED, null, metrics));
-        }
-        for (Map.Entry<String, String> entry : deletedFiles.entrySet()) {
-            String path = entry.getKey();
-            if (newFiles.contains(path)) continue;
-            String beforeContent = snapshots.getOrDefault(path, entry.getValue());
-            items.add(buildItem(path, basePath, ReviewItem.Status.DELETED, beforeContent, metrics));
-        }
-
-        items.sort((a, b) -> a.relativePath().compareToIgnoreCase(b.relativePath()));
-        return items;
-    }
-
-    private static @NotNull ReviewItem buildItem(@NotNull String path, @Nullable String basePath,
-                                                 @NotNull ReviewItem.Status status,
-                                                 @Nullable String beforeContent,
-                                                 @NotNull EditMetrics metrics) {
-        ApprovalState state = metrics.approvals().getOrDefault(path, ApprovalState.PENDING);
-        long ts = metrics.lastEditedAt().getOrDefault(path, 0L);
-        int added = metrics.linesAdded().getOrDefault(path, 0);
-        int removed = metrics.linesRemoved().getOrDefault(path, 0);
-        return new ReviewItem(path, relativize(path, basePath), status, beforeContent,
-            state, ts, added, removed);
     }
 
     // ── Approval mutations ──────────────────────────────────────────────────
@@ -800,18 +747,7 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
     }
 
     private static @NotNull String formatRanges(@NotNull List<ChangeRange> ranges) {
-        if (ranges.isEmpty()) return "";
-        StringBuilder sb = new StringBuilder(":");
-        boolean first = true;
-        for (ChangeRange r : ranges) {
-            if (!first) sb.append(',');
-            first = false;
-            int start = r.startLine() + 1;
-            int end = Math.max(start, r.endLine());
-            if (start == end) sb.append(start);
-            else sb.append(start).append('-').append(end);
-        }
-        return sb.toString();
+        return ReviewTextFormatter.formatRanges(ranges);
     }
 
     private @Nullable String readCurrentContent(@NotNull String path) {
@@ -844,8 +780,7 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
     }
 
     static int countLines(@Nullable String content) {
-        if (content == null || content.isEmpty()) return 0;
-        return (int) content.lines().count();
+        return ReviewTextFormatter.countLines(content);
     }
 
     private static @NotNull String buildUnifiedDiff(@NotNull String before, @NotNull String after) {
@@ -1067,11 +1002,7 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
     }
 
     static @NotNull String formatReviewTimeoutError(@NotNull String operation, int fileCount) {
-        return ERR_PREFIX + fileCount + (fileCount == 1 ? " file has" : " files have")
-            + " not been approved or rejected by the user. '"
-            + operation + "' cannot proceed until all pending agent edits are reviewed."
-            + " The user must accept or revert the pending edits in the"
-            + " Review panel (left of chat), then retry.";
+        return ReviewTextFormatter.formatReviewTimeoutError(operation, fileCount);
     }
 
     public synchronized void endSession() {
@@ -1163,13 +1094,6 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
             return filePath.substring(basePath.length() + 1);
         }
         return vf.getName();
-    }
-
-    private static @NotNull String relativize(@NotNull String path, @Nullable String basePath) {
-        if (basePath != null && path.startsWith(basePath + "/")) {
-            return path.substring(basePath.length() + 1);
-        }
-        return new java.io.File(path).getName();
     }
 
     private @NotNull Set<String> collectAllPaths() {
@@ -1423,26 +1347,10 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
         state.snapshots = new LinkedHashMap<>(snapshots);
         state.deletedFiles = new LinkedHashMap<>(deletedFiles);
         state.newFiles = new ArrayList<>(newFiles);
-        Map<String, String> approvalsAsString = new LinkedHashMap<>();
-        for (Map.Entry<String, ApprovalState> e : approvals.entrySet()) {
-            approvalsAsString.put(e.getKey(), e.getValue().name());
-        }
-        state.approvals = approvalsAsString;
-        Map<String, String> tsAsString = new LinkedHashMap<>();
-        for (Map.Entry<String, Long> e : lastEditedAt.entrySet()) {
-            tsAsString.put(e.getKey(), Long.toString(e.getValue()));
-        }
-        state.lastEditedAt = tsAsString;
-        Map<String, String> addedAsString = new LinkedHashMap<>();
-        for (Map.Entry<String, Integer> e : linesAdded.entrySet()) {
-            addedAsString.put(e.getKey(), Integer.toString(e.getValue()));
-        }
-        state.linesAdded = addedAsString;
-        Map<String, String> removedAsString = new LinkedHashMap<>();
-        for (Map.Entry<String, Integer> e : linesRemoved.entrySet()) {
-            removedAsString.put(e.getKey(), Integer.toString(e.getValue()));
-        }
-        state.linesRemoved = removedAsString;
+        state.approvals = PersistedStateCodec.serializeApprovals(approvals);
+        state.lastEditedAt = PersistedStateCodec.serializeLongs(lastEditedAt);
+        state.linesAdded = PersistedStateCodec.serializeInts(linesAdded);
+        state.linesRemoved = PersistedStateCodec.serializeInts(linesRemoved);
         return state;
     }
 
@@ -1456,45 +1364,13 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
         if (state.newFiles != null) newFiles.addAll(state.newFiles);
 
         approvals.clear();
-        if (state.approvals != null) {
-            for (Map.Entry<String, String> e : state.approvals.entrySet()) {
-                try {
-                    approvals.put(e.getKey(), ApprovalState.valueOf(e.getValue()));
-                } catch (IllegalArgumentException ignored) {
-                    approvals.put(e.getKey(), ApprovalState.PENDING);
-                }
-            }
-        }
+        approvals.putAll(PersistedStateCodec.deserializeApprovals(state.approvals));
         lastEditedAt.clear();
-        if (state.lastEditedAt != null) {
-            for (Map.Entry<String, String> e : state.lastEditedAt.entrySet()) {
-                try {
-                    lastEditedAt.put(e.getKey(), Long.parseLong(e.getValue()));
-                } catch (NumberFormatException ignored) {
-                    // skip malformed entries
-                }
-            }
-        }
+        lastEditedAt.putAll(PersistedStateCodec.deserializeLongs(state.lastEditedAt));
         linesAdded.clear();
-        if (state.linesAdded != null) {
-            for (Map.Entry<String, String> e : state.linesAdded.entrySet()) {
-                try {
-                    linesAdded.put(e.getKey(), Integer.parseInt(e.getValue()));
-                } catch (NumberFormatException ignored) {
-                    // skip malformed entries
-                }
-            }
-        }
+        linesAdded.putAll(PersistedStateCodec.deserializeInts(state.linesAdded));
         linesRemoved.clear();
-        if (state.linesRemoved != null) {
-            for (Map.Entry<String, String> e : state.linesRemoved.entrySet()) {
-                try {
-                    linesRemoved.put(e.getKey(), Integer.parseInt(e.getValue()));
-                } catch (NumberFormatException ignored) {
-                    // skip malformed entries
-                }
-            }
-        }
+        linesRemoved.putAll(PersistedStateCodec.deserializeInts(state.linesRemoved));
 
         // If auto-approve was turned on while PENDING entries existed (or between
         // IDE restarts), upgrade them now so they don't block future git operations.

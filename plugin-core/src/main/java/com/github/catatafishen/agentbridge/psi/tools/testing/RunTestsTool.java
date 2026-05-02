@@ -42,8 +42,6 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Runs tests by class, method, or wildcard pattern.
@@ -60,33 +58,17 @@ public final class RunTestsTool extends TestingTool {
     private static final String PARAM_TARGET = "target";
     private static final String PARAM_TEST_TASK = "test_task";
 
-    /**
-     * Matches Gradle test task registrations in Kotlin/Groovy DSL build files.
-     * Each alternative captures the task name in its respective group.
-     * Used by {@link #findTestTaskInBuildFile(String)} for auto-detection.
-     */
-    private static final java.util.regex.Pattern GRADLE_TEST_TASK_PATTERN =
-        java.util.regex.Pattern.compile(
-            "tasks\\.register\\(\"([a-zA-Z][a-zA-Z0-9]*)\",\\s*Test::" +      // register("name", Test::class)
-                "|tasks\\.register<Test>\\(\"([a-zA-Z][a-zA-Z0-9]*)\"" +           // register<Test>("name")
-                "|val\\s+([a-zA-Z][a-zA-Z0-9]*)\\s+by\\s+tasks\\.registering\\(Test" + // val name by tasks.registering(Test
-                "|\\btask\\s+([a-zA-Z][a-zA-Z0-9]*)\\s*\\(\\s*type\\s*:\\s*Test" + // task name(type: Test)
-                "|tasks\\.register\\('([a-zA-Z][a-zA-Z0-9]*)',\\s*Test"            // register('name', Test) Groovy
-        );
     private static final String TEST_TYPE_METHOD = "method";
     private static final String TEST_TYPE_CLASS = "class";
     private static final String TEST_TYPE_PATTERN = "pattern";
     private static final String JUNIT_TYPE_ID = "junit";
     private static final String LAUNCH_FAILED = "launch_failed";
-    private static final String TESTS_PASSED = "Tests PASSED";
-    private static final String TESTS_FAILED_PREFIX = "Tests FAILED (exit code ";
     private static final String NO_PROCESS_HANDLE_MSG =
         "\nCould not capture process handle. Check the Run panel for results.";
     private static final String FIELD_TEST_OBJECT = "TEST_OBJECT";
     private static final String ERROR_PROCESS_FAILED_TO_START = "Error: Test process failed to start for ";
     private static final String ERROR_TESTS_TIMED_OUT = "Tests timed out after 120 seconds: ";
     private static final String STARTED_TESTS_MSG = "Started tests via IntelliJ JUnit runner: ";
-    private static final String RESULTS_IN_RUNNER_PANEL = "\nResults are visible in the IntelliJ test runner panel.";
     private static final String ERROR_NO_PROJECT_PATH = "Error: Could not determine project base path";
 
     public RunTestsTool(Project project) {
@@ -607,68 +589,15 @@ public final class RunTestsTool extends TestingTool {
             }
         }
 
-        return detectTestTaskFromBuildFiles(basePath);
+        return GradleBuildFileScanner.detectTestTask(basePath);
     }
 
     /**
-     * Fallback for projects not yet imported into IntelliJ's ExternalSystem model.
-     * Scans Gradle build files in the project root and first-level subdirectories
-     * using {@link #findTestTaskInBuildFile(String)}.
-     */
-    @Nullable
-    private static String detectTestTaskFromBuildFiles(@NotNull String basePath) {
-        java.io.File root = new java.io.File(basePath);
-        for (String fileName : List.of("build.gradle.kts", "build.gradle")) {
-            String content = readBuildFileQuietly(new java.io.File(root, fileName));
-            if (content != null) {
-                String task = findTestTaskInBuildFile(content);
-                if (task != null) return task;
-            }
-        }
-        java.io.File[] subdirs = root.listFiles(java.io.File::isDirectory);
-        if (subdirs != null) {
-            for (java.io.File dir : subdirs) {
-                for (String fileName : List.of("build.gradle.kts", "build.gradle")) {
-                    String content = readBuildFileQuietly(new java.io.File(dir, fileName));
-                    if (content != null) {
-                        String task = findTestTaskInBuildFile(content);
-                        if (task != null) return task;
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    @Nullable
-    private static String readBuildFileQuietly(java.io.File file) {
-        if (!file.exists()) return null;
-        try {
-            return java.nio.file.Files.readString(file.toPath());
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
-     * Scans a single Gradle build file's content for non-standard test task registrations
-     * (tasks of type {@code Test} with a name other than {@code "test"}).
-     * Supports Kotlin DSL ({@code tasks.register}, {@code tasks.register&lt;Test&gt;},
-     * delegate {@code by tasks.registering}) and Groovy DSL ({@code task name(type: Test)}).
-     * Pure function — no IDE dependency.
-     *
-     * @return the first custom test task name found, or {@code null}
+     * Delegates to {@link GradleBuildFileScanner#findTestTaskInBuildFile(String)}.
      */
     @Nullable
     static String findTestTaskInBuildFile(@NotNull String content) {
-        var matcher = GRADLE_TEST_TASK_PATTERN.matcher(content);
-        while (matcher.find()) {
-            for (int i = 1; i <= matcher.groupCount(); i++) {
-                String name = matcher.group(i);
-                if (name != null && !"test".equals(name)) return name;
-            }
-        }
-        return null;
+        return GradleBuildFileScanner.findTestTaskInBuildFile(content);
     }
 
     public String executeFromCommand(@NotNull String command) {
@@ -689,42 +618,18 @@ public final class RunTestsTool extends TestingTool {
         }
     }
 
-    /**
-     * Extracts the test filter value from a Gradle ({@code --tests &lt;filter&gt;}) or
-     * Maven ({@code -Dtest=&lt;filter&gt;}) command string.
-     * Pure function — no IDE dependency.
-     *
-     * @return the filter value, or {@code null} if no filter is present
-     */
     @Nullable
     static String parseTestsFilterFromCommand(@NotNull String command) {
-        var gradleMatcher = java.util.regex.Pattern
-            .compile("--tests\\s+[\"']?([^\"'\\s]+)[\"']?(?:\\s|$)")
-            .matcher(command);
-        if (gradleMatcher.find()) return gradleMatcher.group(1);
-
-        var mavenMatcher = java.util.regex.Pattern
-            .compile("-Dtest=(\\S+)")
-            .matcher(command);
-        if (mavenMatcher.find()) return mavenMatcher.group(1);
-
-        return null;
+        return TestConfigBuilder.parseTestsFilterFromCommand(command);
     }
 
     static @NotNull String parseModuleFromCommand(@NotNull String command) {
-        Matcher m = Pattern.compile(
-            "\\s:([a-z][a-z0-9._-]*):[a-z]",
-            Pattern.CASE_INSENSITIVE).matcher(command);
-        return m.find() ? m.group(1) : "";
+        return TestConfigBuilder.parseModuleFromCommand(command);
     }
 
     @Nullable
     static String parseTaskFromCommand(@NotNull String command) {
-        var m = Pattern.compile(
-            "gradlew?(?:\\.bat)?\\s+(?::[a-z][-a-z0-9._:]*:)?([a-z][a-z0-9]*+)(?:\\s|$)",
-            Pattern.CASE_INSENSITIVE
-        ).matcher(command);
-        return m.find() ? m.group(1) : null;
+        return TestConfigBuilder.parseTaskFromCommand(command);
     }
 
     // ── Execution lifecycle helpers ──────────────────────────
@@ -917,37 +822,16 @@ public final class RunTestsTool extends TestingTool {
         }
     }
 
-    /**
-     * Builds a fully-qualified class name from package and simple name.
-     * Pure function — no IDE dependency.
-     */
     static String buildFqn(@Nullable String packageName, @NotNull String simpleName) {
-        return packageName != null && !packageName.isEmpty() ? packageName + "." + simpleName : simpleName;
+        return TestConfigBuilder.buildFqn(packageName, simpleName);
     }
 
-    /**
-     * Extracts the FQN from raw source text by parsing the {@code package} declaration via regex.
-     * Fallback for when PSI reflection fails.
-     * Pure function — no IDE dependency.
-     */
     static String extractFqnFromSourceText(@NotNull String sourceText, @NotNull String simpleName) {
-        var matcher = java.util.regex.Pattern.compile("^package\\s+([\\w.]+)").matcher(sourceText);
-        if (matcher.find()) {
-            return matcher.group(1) + "." + simpleName;
-        }
-        return simpleName;
+        return TestConfigBuilder.extractFqnFromSourceText(sourceText, simpleName);
     }
 
-    /**
-     * Formats a test execution summary from exit code, config name, and test output.
-     * Pure function — no IDE dependency.
-     */
     static String formatTestSummary(int exitCode, @NotNull String configName, @NotNull String testOutput) {
-        String summary = (exitCode == 0 ? TESTS_PASSED : TESTS_FAILED_PREFIX + exitCode + ")")
-            + " — " + configName;
-        return testOutput.isEmpty()
-            ? summary + RESULTS_IN_RUNNER_PANEL
-            : summary + "\n" + testOutput;
+        return TestResultFormatter.formatTestSummary(exitCode, configName, testOutput);
     }
 
     private String collectTestRunOutput(String configName) {
@@ -1041,100 +925,34 @@ public final class RunTestsTool extends TestingTool {
         return JunitXmlParser.parseJunitXmlResults(basePath, module);
     }
 
-    // ── Extracted pure helpers ────────────────────────────────
-
-    /**
-     * Builds a JUnit run configuration name from the test class simple name and optional method.
-     * Pure function — no IDE dependency.
-     */
     static String buildJUnitConfigName(@NotNull String simpleName, @Nullable String testMethod) {
-        return "Test: " + (testMethod != null ? simpleName + "." + testMethod : simpleName);
+        return TestConfigBuilder.buildJUnitConfigName(simpleName, testMethod);
     }
 
-    /**
-     * Builds a pattern-based run configuration name from the glob target and match count.
-     * Pure function — no IDE dependency.
-     */
     static String buildPatternConfigName(@NotNull String target, int classCount) {
-        return "Test: " + target + " (" + classCount + " classes)";
+        return TestConfigBuilder.buildPatternConfigName(target, classCount);
     }
 
-    /**
-     * Builds a Gradle task prefix from the module name.
-     * Returns an empty string for no module, or {@code ":module:"} for a named module.
-     * Pure function — no IDE dependency.
-     */
     static String buildGradleTaskPrefix(@NotNull String module) {
-        return module.isEmpty() ? "" : ":" + module + ":";
+        return TestConfigBuilder.buildGradleTaskPrefix(module);
     }
 
-    /**
-     * Normalises a Gradle {@code --tests} filter argument so it always includes a package qualifier.
-     * <p>
-     * Gradle's {@code --tests} filter requires a pattern in the form
-     * {@code [package.]ClassName[.methodName]}.  A bare simple name such as {@code FormattingTest}
-     * or a wildcard like {@code *Test} is silently rejected with
-     * {@code "No tests found for given includes"} because Gradle interprets it as a root-package
-     * class pattern, not an any-package wildcard.
-     * <p>
-     * Rules applied:
-     * <ul>
-     *   <li>No dot in target (e.g. {@code FormattingTest}, {@code *Test}) → prepend {@code *.}</li>
-     *   <li>Has a dot but first segment starts with an uppercase letter
-     *       (e.g. {@code FormattingTest.testFoo}) → prepend {@code *.}</li>
-     *   <li>Otherwise (e.g. {@code com.example.Foo}, {@code *.*Test}) → return unchanged</li>
-     * </ul>
-     * Pure function — no IDE dependency.
-     */
     static String buildGradleTestFilter(@NotNull String target) {
-        if (!target.contains(".")) {
-            return "*." + target;
-        }
-        char first = target.charAt(0);
-        if (Character.isUpperCase(first)) {
-            return "*." + target;
-        }
-        return target;
+        return TestConfigBuilder.buildGradleTestFilter(target);
     }
 
-    /**
-     * Determines the test status label from passed/defect flags.
-     * Pure function — no IDE dependency.
-     */
     static String determineTestStatus(boolean passed, boolean defect) {
-        if (passed) return "PASSED";
-        if (defect) return "FAILED";
-        return "UNKNOWN";
+        return TestResultFormatter.determineTestStatus(passed, defect);
     }
 
-    /**
-     * Formats a single test detail line with optional failure information.
-     * Pure function — no IDE dependency.
-     */
     static String formatTestDetail(@NotNull String name, boolean passed, boolean defect,
                                    @Nullable String errorMsg, @Nullable String stacktrace) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("  ").append(determineTestStatus(passed, defect)).append(" ").append(name).append("\n");
-        if (defect) {
-            if (errorMsg != null && !errorMsg.isEmpty()) {
-                sb.append("    Error: ").append(errorMsg).append("\n");
-            }
-            if (stacktrace != null && !stacktrace.isEmpty()) {
-                sb.append("    Stacktrace:\n").append(stacktrace).append("\n");
-            }
-        }
-        return sb.toString();
+        return TestResultFormatter.formatTestDetail(name, passed, defect, errorMsg, stacktrace);
     }
 
-    /**
-     * Formats raw console text into a labelled console output section.
-     * Returns {@code null} if text is null or blank.
-     * Pure function — no IDE dependency.
-     */
     @Nullable
     static String formatConsoleSection(@Nullable String text) {
-        if (text == null || text.isBlank()) return null;
-        return "\n=== Console Output ===\n" + ToolUtils.truncateOutput(text);
+        return TestResultFormatter.formatConsoleSection(text);
     }
 
 }
