@@ -150,7 +150,7 @@ function _renderUserTurn(turn: UserTurn): HTMLElement {
 function _renderAgentSegment(agent: string, segment: AgentSegment): HTMLElement {
     const msg = document.createElement('chat-message');
     msg.setAttribute('type', 'agent');
-    if (agent) msg.setAttribute('data-agent', agent);
+    if (agent) msg.dataset.agent = agent;
 
     const meta = document.createElement('message-meta');
     if (segment.timestamp) {
@@ -226,7 +226,7 @@ function _appendThinking(entry: ThinkingEntry, meta: HTMLElement, details: HTMLE
     const chip = document.createElement('thinking-chip');
     chip.setAttribute('label', 'Thought');
     chip.setAttribute('status', 'complete');
-    chip.setAttribute('data-chip-for', entry.id);
+    chip.dataset.chipFor = entry.id;
     meta.appendChild(chip);
 
     const block = document.createElement('thinking-block');
@@ -244,9 +244,9 @@ function _appendToolChip(entry: ToolEntry, meta: HTMLElement): void {
     chip.setAttribute('label', entry.label);
     chip.setAttribute('status', entry.status);
     chip.setAttribute('kind', entry.kind);
-    chip.setAttribute('data-chip-for', entry.id);
-    if (entry.params) chip.setAttribute('data-params', entry.params);
-    if (entry.pluginTool) chip.setAttribute('data-mcp-handled', 'true');
+    chip.dataset.chipFor = entry.id;
+    if (entry.params) chip.dataset.params = entry.params;
+    if (entry.pluginTool) chip.dataset.mcpHandled = 'true';
     meta.appendChild(chip);
 }
 
@@ -261,7 +261,7 @@ function _appendSubAgent(entry: SubAgentEntry, meta: HTMLElement, msg: HTMLEleme
     chip.setAttribute('label', entry.label);
     chip.setAttribute('status', entry.status);
     chip.setAttribute('color-index', String(entry.colorIndex));
-    chip.setAttribute('data-chip-for', entry.id);
+    chip.dataset.chipFor = entry.id;
     meta.appendChild(chip);
 
     const indent = document.createElement('div');

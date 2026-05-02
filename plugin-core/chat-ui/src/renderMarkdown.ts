@@ -65,8 +65,8 @@ function buildThinkingBlockHtml(content: string): string {
 
 function preprocessXmlTags(text: string): string {
     return text
-        .replace(THINK_TAG_PATTERN, (_match, _tag, content) => buildThinkingBlockHtml(content))
-        .replace(WRAPPER_TAG_LINE_PATTERN, '');
+        .replaceAll(THINK_TAG_PATTERN, (_match, _tag, content) => buildThinkingBlockHtml(content))
+        .replaceAll(WRAPPER_TAG_LINE_PATTERN, '');
 }
 
 function preprocessXmlTagsOutsideCodeFences(text: string): string {
