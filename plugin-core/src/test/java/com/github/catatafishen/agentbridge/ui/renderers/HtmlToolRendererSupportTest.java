@@ -1,8 +1,12 @@
 package com.github.catatafishen.agentbridge.ui.renderers;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import javax.swing.*;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -23,42 +27,25 @@ class HtmlToolRendererSupportTest {
         assertEquals("text/html", editorPane.getContentType());
     }
 
-    @Test
-    void markdownPaneRendersBold() {
-        JComponent pane = HtmlToolRendererSupport.INSTANCE.markdownPane("**bold**");
-
+    @ParameterizedTest
+    @MethodSource("markdownRenderingCases")
+    void markdownPaneRendersExpectedContent(String markdown, String expectedInHtml) {
+        JComponent pane = HtmlToolRendererSupport.INSTANCE.markdownPane(markdown);
         JEditorPane editorPane = (JEditorPane) pane;
         String html = editorPane.getText();
-        assertTrue(html.contains("<b>bold</b>"), html);
+        assertTrue(html.contains(expectedInHtml), html);
     }
 
-    @Test
-    void markdownPaneRendersParagraphText() {
-        JComponent pane = HtmlToolRendererSupport.INSTANCE.markdownPane("plain text");
-
-        JEditorPane editorPane = (JEditorPane) pane;
-        String html = editorPane.getText();
-        // JEditorPane adds whitespace; just check the text content is present
-        assertTrue(html.contains("plain text"), html);
-    }
-
-    @Test
-    void markdownPaneRendersListItemContent() {
-        JComponent pane = HtmlToolRendererSupport.INSTANCE.markdownPane("- item1\n- item2");
-
-        JEditorPane editorPane = (JEditorPane) pane;
-        String html = editorPane.getText();
-        assertTrue(html.contains("item1"), html);
-        assertTrue(html.contains("item2"), html);
-    }
-
-    @Test
-    void markdownPaneAppliesFontFamily() {
-        JComponent pane = HtmlToolRendererSupport.INSTANCE.markdownPane("text");
-
-        JEditorPane editorPane = (JEditorPane) pane;
-        String html = editorPane.getText();
-        assertTrue(html.contains("font-family:"), html);
+    static Stream<Arguments> markdownRenderingCases() {
+        return Stream.of(
+            Arguments.of("**bold**", "<b>bold</b>"),
+            Arguments.of("plain text", "plain text"),
+            Arguments.of("- item1\n- item2", "item1"),
+            Arguments.of("- item1\n- item2", "item2"),
+            Arguments.of("text", "font-family:"),
+            Arguments.of("Use `println()`", "<code>println()</code>"),
+            Arguments.of("[click](https://example.com)", "https://example.com")
+        );
     }
 
     @Test
@@ -66,23 +53,5 @@ class HtmlToolRendererSupportTest {
         JComponent pane = HtmlToolRendererSupport.INSTANCE.markdownPane("");
 
         assertNotNull(pane);
-    }
-
-    @Test
-    void markdownPaneRendersCode() {
-        JComponent pane = HtmlToolRendererSupport.INSTANCE.markdownPane("Use `println()`");
-
-        JEditorPane editorPane = (JEditorPane) pane;
-        String html = editorPane.getText();
-        assertTrue(html.contains("<code>println()</code>"), html);
-    }
-
-    @Test
-    void markdownPaneRendersLinkHref() {
-        JComponent pane = HtmlToolRendererSupport.INSTANCE.markdownPane("[click](https://example.com)");
-
-        JEditorPane editorPane = (JEditorPane) pane;
-        String html = editorPane.getText();
-        assertTrue(html.contains("https://example.com"), html);
     }
 }

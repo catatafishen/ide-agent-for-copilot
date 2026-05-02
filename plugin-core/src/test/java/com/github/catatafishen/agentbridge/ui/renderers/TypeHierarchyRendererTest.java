@@ -3,6 +3,8 @@ package com.github.catatafishen.agentbridge.ui.renderers;
 import kotlin.text.MatchResult;
 import kotlin.text.Regex;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -42,25 +44,16 @@ class TypeHierarchyRendererTest {
 
     // ── SECTION_HEADER ──────────────────────────────────────
 
-    @Test
-    void sectionHeader_matchesSupertypes() {
-        MatchResult m = sectionHeader.find("Supertypes:", 0);
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+        "Supertypes:|Supertypes",
+        "Subtypes:|Subtypes",
+        "Implementations:|Implementations"
+    })
+    void sectionHeader_matchesKnownSections(String input, String expectedName) {
+        MatchResult m = sectionHeader.find(input, 0);
         assertNotNull(m);
-        assertEquals("Supertypes", m.getGroupValues().get(1));
-    }
-
-    @Test
-    void sectionHeader_matchesSubtypes() {
-        MatchResult m = sectionHeader.find("Subtypes:", 0);
-        assertNotNull(m);
-        assertEquals("Subtypes", m.getGroupValues().get(1));
-    }
-
-    @Test
-    void sectionHeader_matchesImplementations() {
-        MatchResult m = sectionHeader.find("Implementations:", 0);
-        assertNotNull(m);
-        assertEquals("Implementations", m.getGroupValues().get(1));
+        assertEquals(expectedName, m.getGroupValues().get(1));
     }
 
     @Test

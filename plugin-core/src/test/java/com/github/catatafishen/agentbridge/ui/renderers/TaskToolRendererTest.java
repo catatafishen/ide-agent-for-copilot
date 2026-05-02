@@ -1,6 +1,11 @@
 package com.github.catatafishen.agentbridge.ui.renderers;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -10,11 +15,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskToolRendererTest {
 
-    @Test
-    void parseTaskOutputReturnsEmptyForEmptyInput() {
-        TaskToolRenderer.ParsedTaskResult parsed = TaskToolRenderer.INSTANCE.parseTaskOutput("");
+    @ParameterizedTest
+    @MethodSource("nullTaskIdCases")
+    void parseTaskOutputReturnsNullTaskIdWithExpectedContent(String input, String expectedContent) {
+        TaskToolRenderer.ParsedTaskResult parsed = TaskToolRenderer.INSTANCE.parseTaskOutput(input);
         assertNull(parsed.getTaskId());
-        assertEquals("", parsed.getContent());
+        assertEquals(expectedContent, parsed.getContent());
+    }
+
+    static Stream<Arguments> nullTaskIdCases() {
+        return Stream.of(
+            Arguments.of("", ""),
+            Arguments.of("plain subagent output", "plain subagent output"),
+            Arguments.of("literal <task_result>text</task_result> body", "literal <task_result>text</task_result> body")
+        );
+    }
+
+    @Test
+    void renderReturnsPanelForTaskOutput() {
+        assertNotNull(TaskToolRenderer.INSTANCE.render("<task_result>hello</task_result>"));
     }
 
     @Test
@@ -55,28 +74,5 @@ class TaskToolRendererTest {
         assertTrue(parsed.getContent().contains("## Result"), parsed.getContent());
         assertFalse(parsed.getContent().contains("<task_result>"), parsed.getContent());
         assertFalse(parsed.getContent().contains("</task_result>"), parsed.getContent());
-    }
-
-    @Test
-    void parseTaskOutputKeepsPlainContent() {
-        TaskToolRenderer.ParsedTaskResult parsed =
-            TaskToolRenderer.INSTANCE.parseTaskOutput("plain subagent output");
-
-        assertNull(parsed.getTaskId());
-        assertEquals("plain subagent output", parsed.getContent());
-    }
-
-    @Test
-    void parseTaskOutputPreservesInlineTaskResultText() {
-        TaskToolRenderer.ParsedTaskResult parsed =
-            TaskToolRenderer.INSTANCE.parseTaskOutput("literal <task_result>text</task_result> body");
-
-        assertNull(parsed.getTaskId());
-        assertEquals("literal <task_result>text</task_result> body", parsed.getContent());
-    }
-
-    @Test
-    void renderReturnsPanelForTaskOutput() {
-        assertNotNull(TaskToolRenderer.INSTANCE.render("<task_result>hello</task_result>"));
     }
 }

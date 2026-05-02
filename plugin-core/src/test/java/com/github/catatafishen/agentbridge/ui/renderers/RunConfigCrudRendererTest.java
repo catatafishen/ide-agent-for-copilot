@@ -3,6 +3,8 @@ package com.github.catatafishen.agentbridge.ui.renderers;
 import kotlin.text.MatchResult;
 import kotlin.text.Regex;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -73,25 +75,16 @@ class RunConfigCrudRendererTest {
 
     // ── STARTED ─────────────────────────────────────────────
 
-    @Test
-    void started_matchesStarted() {
-        MatchResult m = started.find("Started 'My Config'", 0);
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+        "Started 'My Config'|My Config",
+        "Executed 'Build'|Build",
+        "Running 'Server'|Server"
+    })
+    void started_matchesVerb(String input, String expectedName) {
+        MatchResult m = started.find(input, 0);
         assertNotNull(m);
-        assertEquals("My Config", m.getGroupValues().get(1));
-    }
-
-    @Test
-    void started_matchesExecuted() {
-        MatchResult m = started.find("Executed 'Build'", 0);
-        assertNotNull(m);
-        assertEquals("Build", m.getGroupValues().get(1));
-    }
-
-    @Test
-    void started_matchesRunning() {
-        MatchResult m = started.find("Running 'Server'", 0);
-        assertNotNull(m);
-        assertEquals("Server", m.getGroupValues().get(1));
+        assertEquals(expectedName, m.getGroupValues().get(1));
     }
 
     @Test

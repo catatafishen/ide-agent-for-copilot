@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -80,14 +81,10 @@ class InspectionResultRendererTest {
             assertEquals("WEAK_WARNING", match.getGroupValues().get(3));
         }
 
-        @Test
-        void doesNotMatchBlankLine() {
-            assertNull(FINDING_PATTERN.matchEntire(""));
-        }
-
-        @Test
-        void doesNotMatchSummaryLine() {
-            assertNull(FINDING_PATTERN.matchEntire("Found 5 problems across 3 files"));
+        @ParameterizedTest
+        @ValueSource(strings = {"", "Found 5 problems across 3 files"})
+        void doesNotMatchNonFindingInput(String input) {
+            assertNull(FINDING_PATTERN.matchEntire(input));
         }
 
         @Test
