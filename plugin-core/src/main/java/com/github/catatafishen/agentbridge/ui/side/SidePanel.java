@@ -17,7 +17,7 @@ import java.awt.*;
  * Hosts five tabs:
  * <ol>
  *   <li><b>Diff</b> — the existing {@link DiffPanel} with pending agent edits.</li>
- *   <li><b>Todo</b> — rendered view of the active agent session's {@code plan.md},
+ *   <li><b>Plan</b> — rendered view of the active agent session's {@code plan.md},
  *       with a {@code (done/total)} badge in the tab title when checkbox-style task items exist.</li>
  *   <li><b>Tools</b> — live list of MCP tool calls with timestamps, categories, and expandable I/O.</li>
  *   <li><b>Search</b> — searchable list of user prompts across the current conversation history, click to scroll.</li>
