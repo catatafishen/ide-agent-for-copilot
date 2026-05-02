@@ -4,6 +4,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import javax.swing.*;
 import java.util.ArrayList;
@@ -233,60 +235,19 @@ class DialogInterceptorTest {
             assertTrue(clicked.get());
         }
 
-        @Test
-        @DisplayName("recognizes 'Refactor' as confirm button")
-        void refactorButton() {
+        @ParameterizedTest
+        @ValueSource(strings = {"Refactor", "Apply", "Run", "Yes"})
+        @DisplayName("recognizes confirm button labels")
+        void confirmButtonRecognized(String label) {
             JPanel panel = new JPanel();
-            JButton btn = new JButton("Refactor");
+            JButton btn = new JButton(label);
             AtomicBoolean clicked = new AtomicBoolean(false);
             btn.addActionListener(e -> clicked.set(true));
             panel.add(btn);
 
             DialogInterceptor.clickConfirmButton(panel);
 
-            assertTrue(clicked.get());
-        }
-
-        @Test
-        @DisplayName("recognizes 'Apply' as confirm button")
-        void applyButton() {
-            JPanel panel = new JPanel();
-            JButton btn = new JButton("Apply");
-            AtomicBoolean clicked = new AtomicBoolean(false);
-            btn.addActionListener(e -> clicked.set(true));
-            panel.add(btn);
-
-            DialogInterceptor.clickConfirmButton(panel);
-
-            assertTrue(clicked.get());
-        }
-
-        @Test
-        @DisplayName("recognizes 'Run' as confirm button")
-        void runButton() {
-            JPanel panel = new JPanel();
-            JButton btn = new JButton("Run");
-            AtomicBoolean clicked = new AtomicBoolean(false);
-            btn.addActionListener(e -> clicked.set(true));
-            panel.add(btn);
-
-            DialogInterceptor.clickConfirmButton(panel);
-
-            assertTrue(clicked.get());
-        }
-
-        @Test
-        @DisplayName("recognizes 'Yes' as confirm button")
-        void yesButton() {
-            JPanel panel = new JPanel();
-            JButton btn = new JButton("Yes");
-            AtomicBoolean clicked = new AtomicBoolean(false);
-            btn.addActionListener(e -> clicked.set(true));
-            panel.add(btn);
-
-            DialogInterceptor.clickConfirmButton(panel);
-
-            assertTrue(clicked.get());
+            assertTrue(clicked.get(), "Expected '" + label + "' to be recognized as confirm button");
         }
 
         @Test
