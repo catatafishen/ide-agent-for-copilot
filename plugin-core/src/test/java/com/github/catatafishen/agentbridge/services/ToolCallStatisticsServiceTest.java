@@ -431,7 +431,7 @@ class ToolCallStatisticsServiceTest {
 
         var results = service.queryDailyTurnStats("2025-01-15", "2025-01-15");
         assertEquals(2, results.size());
-        assertEquals("claude-cli", results.get(0).agentId());
+        assertEquals("claude-cli", results.getFirst().agentId());
         assertEquals("copilot", results.get(1).agentId());
     }
 
@@ -447,7 +447,7 @@ class ToolCallStatisticsServiceTest {
 
         var results = service.queryDailyTurnStats("2025-01-15", "2025-01-16");
         assertEquals(2, results.size());
-        assertEquals(LocalDate.of(2025, 1, 15), results.get(0).date());
+        assertEquals(LocalDate.of(2025, 1, 15), results.getFirst().date());
         assertEquals(LocalDate.of(2025, 1, 16), results.get(1).date());
     }
 
@@ -529,19 +529,11 @@ class ToolCallStatisticsServiceTest {
             durationMs, linesAdded, linesRemoved, premiumRequests, timestamp, null, branch);
     }
 
-    private static ToolCallStatisticsService.TurnStatsRecord turnRecordWithBranches(
-        String sessionId, String agentId, String date,
-        long inputTokens, long outputTokens, int toolCalls,
-        long durationMs, int linesAdded, int linesRemoved,
-        double premiumRequests, String timestamp, String startBranch, String endBranch) {
-        return new ToolCallStatisticsService.TurnStatsRecord(
-            sessionId, agentId, date, inputTokens, outputTokens, toolCalls,
-            durationMs, linesAdded, linesRemoved, premiumRequests, timestamp, null, null, startBranch, endBranch);
-    }
-
     @Test
     @DisplayName("queryBranchTotals aggregates per branch and orders by premium DESC")
     void queryBranchTotalsAggregatesAndSorts() {
+        service.recordTurnStats(turnRecordWithBranch("s0", "copilot", "2024-12-01",
+            1, 1, 1, 1, 0, 0, 0.1, "2024-12-01T10:00:00Z", "feat/a"));
         service.recordTurnStats(turnRecordWithBranch("s1", "copilot", "2025-01-15",
             100, 200, 3, 5000, 10, 2, 0.5, "2025-01-15T10:00:00Z", "feat/a"));
         service.recordTurnStats(turnRecordWithBranch("s2", "copilot", "2025-01-16",
@@ -556,10 +548,12 @@ class ToolCallStatisticsServiceTest {
 
         assertEquals(2, results.size());
         // feat/b has higher premium total (5.1) than feat/a (1.0) → first
-        assertEquals("feat/b", results.get(0).branch());
-        assertEquals(5.1, results.get(0).premiumRequests(), 0.0001);
-        assertEquals(2, results.get(0).turns());
+        assertEquals("feat/b", results.getFirst().branch());
+        assertEquals(LocalDate.of(2025, 1, 15), results.getFirst().firstDetectedDate());
+        assertEquals(5.1, results.getFirst().premiumRequests(), 0.0001);
+        assertEquals(2, results.getFirst().turns());
         assertEquals("feat/a", results.get(1).branch());
+        assertEquals(LocalDate.of(2024, 12, 1), results.get(1).firstDetectedDate());
         assertEquals(1.0, results.get(1).premiumRequests(), 0.0001);
         assertEquals(2, results.get(1).turns());
     }
@@ -577,7 +571,8 @@ class ToolCallStatisticsServiceTest {
         var results = service.queryBranchTotals("2025-01-01", "2025-01-31");
 
         assertEquals(1, results.size());
-        assertEquals("feat/a", results.get(0).branch());
+        assertEquals("feat/a", results.getFirst().branch());
+        assertEquals(LocalDate.of(2025, 1, 15), results.getFirst().firstDetectedDate());
     }
 
     @Test
@@ -604,7 +599,7 @@ class ToolCallStatisticsServiceTest {
 
         var results = service.queryBranchTotals("2025-01-01", "2025-01-31");
         assertEquals(1, results.size());
-        assertEquals("feat/round-trip", results.get(0).branch());
+        assertEquals("feat/round-trip", results.getFirst().branch());
     }
 
     static Stream<Arguments> branchAttributionCases() {
@@ -619,12 +614,13 @@ class ToolCallStatisticsServiceTest {
     @MethodSource("branchAttributionCases")
     @DisplayName("recordTurnStats branch attribution")
     void recordTurnStatsBranchAttribution(String desc, String startBranch, String endBranch, String expectedBranch) {
-        service.recordTurnStats(turnRecordWithBranches("s1", "copilot", "2025-01-15",
-            100, 200, 3, 5000, 10, 2, 1.0, "2025-01-15T10:00:00Z", startBranch, endBranch));
+        service.recordTurnStats(new ToolCallStatisticsService.TurnStatsRecord(
+            "s1", "copilot", "2025-01-15", 100, 200, 3,
+            5000, 10, 2, 1.0, "2025-01-15T10:00:00Z", null, null, startBranch, endBranch));
 
         var results = service.queryBranchTotals("2025-01-01", "2025-01-31");
         assertEquals(1, results.size());
-        assertEquals(expectedBranch, results.get(0).branch());
+        assertEquals(expectedBranch, results.getFirst().branch());
     }
 
     @Test

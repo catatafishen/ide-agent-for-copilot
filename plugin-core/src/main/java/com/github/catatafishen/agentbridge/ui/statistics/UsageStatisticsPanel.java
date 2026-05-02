@@ -17,47 +17,26 @@ import java.util.EnumMap;
 import java.util.Map;
 
 /**
- * Main panel displaying usage statistics with a time-range selector, a
- * Group-by selector (Agent / Git Branch), and metric charts.
- *
- * <p>Two views, switched via {@link CardLayout}:
- * <ul>
- *   <li>{@code AGENT}: 2×3 grid of {@link UsageStatisticsChart} time-series
- *       (one per metric). Legend shows agents.</li>
- *   <li>{@code GIT_BRANCH}: 2×3 grid of {@link BranchComparisonChart} bar
- *       charts (one per metric) so users can compare per-feature spend.
- *       Bar charts are used instead of time-series because branches are
- *       discrete categories — a stacked or multi-line time chart over many
- *       short-lived branches is unreadable.</li>
- * </ul>
+ * Main panel displaying usage trends by agent across the selected time range.
+ * Branch-grouped usage lives in the dedicated Branch Comparison tab.
  */
 public class UsageStatisticsPanel extends JBPanel<UsageStatisticsPanel> {
 
     private static final Logger LOG = Logger.getInstance(UsageStatisticsPanel.class);
-    private static final String CARD_AGENT = "AGENT";
-    private static final String CARD_BRANCH = "BRANCH";
 
     private final transient Project project;
 
     private final ComboBox<UsageStatisticsData.TimeRange> rangeCombo;
-    private final ComboBox<UsageStatisticsData.GroupBy> groupByCombo;
 
     private final Map<UsageStatisticsData.Metric, UsageStatisticsChart> agentCharts =
         new EnumMap<>(UsageStatisticsData.Metric.class);
-    private final Map<UsageStatisticsData.Metric, BranchComparisonChart> branchCharts =
-        new EnumMap<>(UsageStatisticsData.Metric.class);
     private final JPanel legendContainer;
-    private final JBLabel branchHintLabel;
-
-    private final CardLayout cardLayout;
-    private final JPanel cardPanel;
 
     public UsageStatisticsPanel(Project project) {
         super(new BorderLayout(0, JBUI.scale(8)));
         this.project = project;
         setBorder(JBUI.Borders.empty(12));
 
-        // --- NORTH: toolbar with Period + Group-by selectors + legend ---
         JPanel toolbar = new JPanel(new BorderLayout());
 
         JPanel selectorPanel = new JPanel();
@@ -72,16 +51,6 @@ public class UsageStatisticsPanel extends JBPanel<UsageStatisticsPanel> {
         rangeCombo.addActionListener(e -> reload());
         selectorPanel.add(rangeCombo);
 
-        selectorPanel.add(Box.createHorizontalStrut(JBUI.scale(16)));
-        selectorPanel.add(new JBLabel("Group by:"));
-        selectorPanel.add(Box.createHorizontalStrut(JBUI.scale(6)));
-        groupByCombo = StatisticsComboFactory.createLabeledCombo(
-            UsageStatisticsData.GroupBy.values(),
-            UsageStatisticsData.GroupBy.AGENT,
-            UsageStatisticsData.GroupBy::label);
-        groupByCombo.addActionListener(e -> reload());
-        selectorPanel.add(groupByCombo);
-
         toolbar.add(selectorPanel, BorderLayout.WEST);
 
         legendContainer = new JPanel();
@@ -90,56 +59,23 @@ public class UsageStatisticsPanel extends JBPanel<UsageStatisticsPanel> {
 
         add(toolbar, BorderLayout.NORTH);
 
-        // --- CENTER: card layout switching between agent grid and branch grid ---
-        cardLayout = new CardLayout();
-        cardPanel = new JPanel(cardLayout);
-
-        // Agent view: existing 2×3 time-series grid
         JPanel agentGrid = new JPanel(new GridLayout(2, 3, JBUI.scale(12), JBUI.scale(12)));
         for (UsageStatisticsData.Metric metric : UsageStatisticsData.Metric.values()) {
             UsageStatisticsChart chart = new UsageStatisticsChart(metric.displayName(), metric);
             agentCharts.put(metric, chart);
             agentGrid.add(chart);
         }
-        cardPanel.add(agentGrid, CARD_AGENT);
 
-        // Branch view: 2×3 grid of bar charts + hint label at bottom
-        JPanel branchView = new JPanel(new BorderLayout());
-        JPanel branchGrid = new JPanel(new GridLayout(2, 3, JBUI.scale(12), JBUI.scale(12)));
-        for (UsageStatisticsData.Metric metric : UsageStatisticsData.Metric.values()) {
-            BranchComparisonChart chart = new BranchComparisonChart(metric.displayName(), metric);
-            branchCharts.put(metric, chart);
-            branchGrid.add(chart);
-        }
-        branchView.add(branchGrid, BorderLayout.CENTER);
+        add(agentGrid, BorderLayout.CENTER);
 
-        branchHintLabel = new JBLabel(" ");
-        branchHintLabel.setBorder(JBUI.Borders.emptyTop(8));
-        branchHintLabel.setForeground(JBColor.GRAY);
-        branchView.add(branchHintLabel, BorderLayout.SOUTH);
-
-        cardPanel.add(branchView, CARD_BRANCH);
-
-        add(cardPanel, BorderLayout.CENTER);
-
-        // --- Initial load ---
         reload();
     }
 
     private void reload() {
         UsageStatisticsData.TimeRange range =
             (UsageStatisticsData.TimeRange) rangeCombo.getSelectedItem();
-        UsageStatisticsData.GroupBy groupBy =
-            (UsageStatisticsData.GroupBy) groupByCombo.getSelectedItem();
-        if (range == null || groupBy == null) return;
-
-        if (groupBy == UsageStatisticsData.GroupBy.AGENT) {
-            cardLayout.show(cardPanel, CARD_AGENT);
-            loadAgentData(range);
-        } else {
-            cardLayout.show(cardPanel, CARD_BRANCH);
-            loadBranchData(range);
-        }
+        if (range == null) return;
+        loadAgentData(range);
     }
 
     private void loadAgentData(UsageStatisticsData.TimeRange range) {
@@ -160,22 +96,6 @@ public class UsageStatisticsPanel extends JBPanel<UsageStatisticsPanel> {
         });
     }
 
-    private void loadBranchData(UsageStatisticsData.TimeRange range) {
-        ModalityState modality = ModalityState.any();
-        ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            try {
-                UsageStatisticsData.BranchSnapshot snapshot =
-                    UsageStatisticsLoader.loadBranches(project, range);
-                ApplicationManager.getApplication().invokeLater(() -> {
-                    if (project.isDisposed()) return;
-                    updateBranchCharts(snapshot);
-                }, modality);
-            } catch (Exception e) {
-                LOG.error("Statistics panel: failed to load branch data for range " + range, e);
-            }
-        });
-    }
-
     private void updateAgentCharts(UsageStatisticsData.StatisticsSnapshot snapshot) {
         for (UsageStatisticsChart chart : agentCharts.values()) {
             chart.update(snapshot);
@@ -184,26 +104,6 @@ public class UsageStatisticsPanel extends JBPanel<UsageStatisticsPanel> {
         legendContainer.add(buildAgentLegend(snapshot));
         legendContainer.revalidate();
         legendContainer.repaint();
-    }
-
-    private void updateBranchCharts(UsageStatisticsData.BranchSnapshot snapshot) {
-        for (BranchComparisonChart chart : branchCharts.values()) {
-            chart.update(snapshot);
-        }
-        legendContainer.removeAll();
-        legendContainer.revalidate();
-        legendContainer.repaint();
-
-        if (snapshot.unattributed() > 0) {
-            branchHintLabel.setText(snapshot.unattributed()
-                + " turn(s) in this period have no branch attribution"
-                + " (recorded before per-branch tracking, or git was unavailable).");
-        } else if (snapshot.branches().isEmpty()) {
-            branchHintLabel.setText("No branch data yet. Submit a prompt while on a feature"
-                + " branch to start tracking per-branch usage.");
-        } else {
-            branchHintLabel.setText(" ");
-        }
     }
 
     private JPanel buildAgentLegend(UsageStatisticsData.StatisticsSnapshot snapshot) {

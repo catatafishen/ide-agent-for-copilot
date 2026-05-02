@@ -110,17 +110,14 @@ final class UsageStatisticsData {
         }
     }
 
-    /**
-     * Grouping dimension for the usage statistics charts. Driven by the
-     * "Group by" combo box in {@link UsageStatisticsPanel}.
-     */
-    enum GroupBy {
-        AGENT("Agent"),
-        GIT_BRANCH("Git Branch");
+    enum BranchSort {
+        BAR_VALUE("Bar value"),
+        BRANCH_NAME("Branch name"),
+        FIRST_DETECTED("First detected");
 
         private final String label;
 
-        GroupBy(String label) {
+        BranchSort(String label) {
             this.label = label;
         }
 
@@ -135,6 +132,7 @@ final class UsageStatisticsData {
      */
     record BranchStats(
         String branch,
+        LocalDate firstDetectedDate,
         int turns,
         long inputTokens,
         long outputTokens,
@@ -147,14 +145,13 @@ final class UsageStatisticsData {
     }
 
     /**
-     * Snapshot for branch-grouped view. Populated only when the user picks
-     * "Git Branch" in the Group by combo.
+     * Snapshot for branch-comparison view.
      *
-     * @param branches      one entry per branch, sorted by premium-request cost desc
-     * @param unattributed  count of turns in the date range with NULL/empty git_branch
-     *                      (recorded before branch tracking was added, or when git
-     *                      was unavailable). Surfaced as a warning in the panel so
-     *                      users understand why the totals differ from the agent view.
+     * @param branches     one entry per branch
+     * @param unattributed count of turns in the date range with NULL/empty git_branch
+     *                     (recorded before branch tracking was added, or when git
+     *                     was unavailable). Surfaced as a warning in the panel so
+     *                     users understand why the totals differ from the agent view.
      */
     record BranchSnapshot(
         List<BranchStats> branches,

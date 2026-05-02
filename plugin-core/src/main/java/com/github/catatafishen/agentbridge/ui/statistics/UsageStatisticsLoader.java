@@ -80,7 +80,8 @@ final class UsageStatisticsLoader {
         List<UsageStatisticsData.BranchStats> branches = new ArrayList<>();
         for (ToolCallStatisticsService.BranchAggregate agg : aggregates) {
             branches.add(new UsageStatisticsData.BranchStats(
-                agg.branch(), agg.turns(), agg.inputTokens(), agg.outputTokens(),
+                agg.branch(), agg.firstDetectedDate(),
+                agg.turns(), agg.inputTokens(), agg.outputTokens(),
                 agg.toolCalls(), agg.durationMs(),
                 agg.linesAdded(), agg.linesRemoved(), agg.premiumRequests()
             ));

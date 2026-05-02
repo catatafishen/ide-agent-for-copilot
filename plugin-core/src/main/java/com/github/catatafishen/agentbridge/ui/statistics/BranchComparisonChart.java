@@ -8,14 +8,14 @@ import com.intellij.util.ui.JBUI;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseEvent;
 import java.util.List;
 
 /**
  * Horizontal bar chart that compares one metric across git branches.
- * One bar per branch, sorted by value descending. Uses the same color palette
- * as the agent-grouped chart (via {@link ChatTheme#agentColorIndex(String)},
- * which hashes any string key) so each branch gets a distinctive but stable
- * color across reloads.
+ * One bar per branch. Uses the same color palette as the agent-grouped chart
+ * (via {@link ChatTheme#agentColorIndex(String)}, which hashes any string key)
+ * so each branch gets a distinctive but stable color across reloads.
  *
  * <p>Layout: title (north), bar canvas (center), empty-state label (centered
  * over canvas when there are no rows for the selected metric).
@@ -24,9 +24,11 @@ final class BranchComparisonChart extends JBPanel<BranchComparisonChart> {
 
     private static final int ROW_HEIGHT = JBUI.scale(22);
     private static final int ROW_GAP = JBUI.scale(4);
-    private static final int LABEL_WIDTH = JBUI.scale(140);
+    private static final int MIN_LABEL_WIDTH = JBUI.scale(160);
+    private static final int PREFERRED_LABEL_WIDTH = JBUI.scale(260);
     private static final int VALUE_WIDTH = JBUI.scale(70);
     private static final int CANVAS_PADDING = JBUI.scale(8);
+    private static final int MIN_BAR_AREA_WIDTH = JBUI.scale(32);
 
     private static final Color BAR_TRACK_COLOR = new JBColor(
         com.intellij.ui.Gray._235, com.intellij.ui.Gray._60);
@@ -56,7 +58,13 @@ final class BranchComparisonChart extends JBPanel<BranchComparisonChart> {
         emptyLabel.setVisible(false);
     }
 
-    void update(UsageStatisticsData.BranchSnapshot snapshot) {
+    @Override
+    public Dimension getMaximumSize() {
+        Dimension preferred = getPreferredSize();
+        return new Dimension(Integer.MAX_VALUE, preferred.height);
+    }
+
+    void update(UsageStatisticsData.BranchSnapshot snapshot, UsageStatisticsData.BranchSort sort) {
         if (snapshot == null || snapshot.branches().isEmpty()) {
             remove(canvas);
             emptyLabel.setVisible(true);
@@ -70,24 +78,9 @@ final class BranchComparisonChart extends JBPanel<BranchComparisonChart> {
         remove(emptyLabel);
         add(canvas, BorderLayout.CENTER);
 
-        canvas.setData(snapshot.branches());
+        canvas.setData(BranchComparisonSorter.sort(snapshot.branches(), sort, metric));
         revalidate();
         repaint();
-    }
-
-    /**
-     * Extracts the metric value for a branch. Values are returned as {@code double}
-     * to keep the bar-length math uniform across all metric types.
-     */
-    private double valueFor(UsageStatisticsData.BranchStats branch) {
-        return switch (metric) {
-            case PREMIUM_REQUESTS -> branch.premiumRequests();
-            case TURNS -> branch.turns();
-            case TOKENS -> branch.inputTokens() + branch.outputTokens();
-            case TOOL_CALLS -> branch.toolCalls();
-            case CODE_CHANGES -> branch.linesAdded() + branch.linesRemoved();
-            case AGENT_TIME -> branch.durationMs();
-        };
     }
 
     private static String formatDuration(long ms) {
@@ -118,12 +111,13 @@ final class BranchComparisonChart extends JBPanel<BranchComparisonChart> {
             setOpaque(false);
             setBorder(BorderFactory.createEmptyBorder(
                 CANVAS_PADDING, CANVAS_PADDING, CANVAS_PADDING, CANVAS_PADDING));
+            ToolTipManager.sharedInstance().registerComponent(this);
         }
 
         void setData(List<UsageStatisticsData.BranchStats> branches) {
             this.branches = branches;
             int rowsHeight = branches.size() * (ROW_HEIGHT + ROW_GAP);
-            setPreferredSize(new Dimension(getWidth(), rowsHeight + 2 * CANVAS_PADDING));
+            setPreferredSize(new Dimension(0, rowsHeight + 2 * CANVAS_PADDING));
             revalidate();
         }
 
@@ -133,6 +127,13 @@ final class BranchComparisonChart extends JBPanel<BranchComparisonChart> {
                 case TOKENS, TOOL_CALLS, CODE_CHANGES, TURNS -> formatLargeNumber((long) value);
                 case PREMIUM_REQUESTS -> formatPremium(value);
             };
+        }
+
+        @Override
+        public String getToolTipText(MouseEvent event) {
+            int row = rowAt(event.getY());
+            if (row < 0) return null;
+            return branches.get(row).branch();
         }
 
         @Override
@@ -147,14 +148,15 @@ final class BranchComparisonChart extends JBPanel<BranchComparisonChart> {
                     RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
                 int width = getWidth();
-                int barAreaX = CANVAS_PADDING + LABEL_WIDTH;
+                int labelWidth = labelWidth(width);
+                int barAreaX = CANVAS_PADDING + labelWidth;
                 int barAreaWidth = width - barAreaX - VALUE_WIDTH - CANVAS_PADDING;
-                if (barAreaWidth < JBUI.scale(20)) return;
+                if (barAreaWidth < MIN_BAR_AREA_WIDTH) return;
 
                 // Find max for bar scaling. All bars are scaled to the largest value
                 // so the leader stretches the full width.
                 double maxValue = branches.stream()
-                    .mapToDouble(BranchComparisonChart.this::valueFor)
+                    .mapToDouble(branch -> BranchComparisonSorter.valueFor(metric, branch))
                     .max().orElse(0);
                 if (maxValue <= 0) return;
 
@@ -163,11 +165,11 @@ final class BranchComparisonChart extends JBPanel<BranchComparisonChart> {
 
                 int y = CANVAS_PADDING;
                 for (UsageStatisticsData.BranchStats branch : branches) {
-                    double value = valueFor(branch);
+                    double value = BranchComparisonSorter.valueFor(metric, branch);
 
                     // Branch label (left), truncated with ellipsis if too long
                     g2.setColor(LABEL_COLOR);
-                    String label = truncate(g2, branch.branch(), LABEL_WIDTH - JBUI.scale(8));
+                    String label = truncate(g2, branch.branch(), labelWidth - JBUI.scale(8));
                     g2.drawString(label, CANVAS_PADDING, y + textBaselineOffset);
 
                     // Bar
@@ -193,11 +195,28 @@ final class BranchComparisonChart extends JBPanel<BranchComparisonChart> {
             }
         }
 
+        private int labelWidth(int canvasWidth) {
+            int availableBeforeValue = Math.max(0, canvasWidth - VALUE_WIDTH - (2 * CANVAS_PADDING));
+            int widthForWideLayouts = Math.min(PREFERRED_LABEL_WIDTH, Math.max(MIN_LABEL_WIDTH, canvasWidth / 3));
+            return Math.min(widthForWideLayouts, Math.max(0, availableBeforeValue - MIN_BAR_AREA_WIDTH));
+        }
+
+        private int rowAt(int y) {
+            int relativeY = y - CANVAS_PADDING;
+            if (relativeY < 0) return -1;
+            int rowStride = ROW_HEIGHT + ROW_GAP;
+            int row = relativeY / rowStride;
+            if (row >= branches.size()) return -1;
+            return relativeY % rowStride < ROW_HEIGHT ? row : -1;
+        }
+
         private String truncate(Graphics2D g2, String text, int maxWidth) {
             FontMetrics fm = g2.getFontMetrics();
+            if (maxWidth <= 0) return "";
             if (fm.stringWidth(text) <= maxWidth) return text;
             String ellipsis = "…";
             int ellipsisWidth = fm.stringWidth(ellipsis);
+            if (ellipsisWidth > maxWidth) return "";
             for (int i = text.length() - 1; i > 0; i--) {
                 String candidate = text.substring(0, i);
                 if (fm.stringWidth(candidate) + ellipsisWidth <= maxWidth) {
