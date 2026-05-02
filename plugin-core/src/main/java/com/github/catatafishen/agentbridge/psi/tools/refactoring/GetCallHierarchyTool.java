@@ -1,5 +1,6 @@
 package com.github.catatafishen.agentbridge.psi.tools.refactoring;
 
+import com.github.catatafishen.agentbridge.psi.CallHierarchySupport;
 import com.github.catatafishen.agentbridge.psi.ToolUtils;
 import com.github.catatafishen.agentbridge.ui.renderers.SearchResultRenderer;
 import com.google.gson.JsonObject;
@@ -37,7 +38,8 @@ public final class GetCallHierarchyTool extends RefactoringTool {
 
     @Override
     public @NotNull String description() {
-        return "Find all callers of a function, method, or named element with file paths and line numbers";
+        return "Find all callers of a function, method, or named element with file paths and line numbers. "
+            + "Use 'depth' to traverse multiple levels (e.g., depth=2 finds callers of callers).";
     }
 
     @Override
@@ -55,7 +57,9 @@ public final class GetCallHierarchyTool extends RefactoringTool {
         return schema(
             Param.required(PARAM_SYMBOL, TYPE_STRING, "Function, method, or named element to find callers for"),
             Param.required("file", TYPE_STRING, "Path to the file containing the definition"),
-            Param.required("line", TYPE_INTEGER, "Line number where the definition is located")
+            Param.required("line", TYPE_INTEGER, "Line number where the definition is located"),
+            Param.optional("depth", TYPE_INTEGER, "How many levels of callers to traverse (default: 1, max: 5). "
+                + "depth=1 finds direct callers, depth=2 also finds callers of those callers, etc.")
         );
     }
 
@@ -72,10 +76,13 @@ public final class GetCallHierarchyTool extends RefactoringTool {
         String elementName = args.get(PARAM_SYMBOL).getAsString();
         String filePath = args.get("file").getAsString();
         int line = args.get("line").getAsInt();
+        int depth = args.has("depth") ? Math.min(args.get("depth").getAsInt(), 5) : 1;
+        if (depth < 1) depth = 1;
 
+        int finalDepth = depth;
         String result = ApplicationManager.getApplication().runReadAction(
-            (Computable<String>) () -> com.github.catatafishen.agentbridge.psi.CallHierarchySupport
-                .getCallHierarchy(project, elementName, filePath, line)
+            (Computable<String>) () -> CallHierarchySupport
+                .getCallHierarchy(project, elementName, filePath, line, finalDepth)
         );
         return ToolUtils.truncateOutput(result);
     }
