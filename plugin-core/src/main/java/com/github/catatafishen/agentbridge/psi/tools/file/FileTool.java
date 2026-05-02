@@ -530,6 +530,24 @@ public abstract class FileTool extends Tool {
     }
 
     /**
+     * Resolves the git executable to an absolute path by probing well-known locations.
+     * Falls back to the bare {@code "git"} command only as a last resort (PATH lookup).
+     */
+    private static String resolveGitExecutable() {
+        for (String candidate : List.of(
+            "/usr/bin/git",
+            "/usr/local/bin/git",
+            "/opt/homebrew/bin/git",
+            "/opt/local/bin/git"
+        )) {
+            if (new java.io.File(candidate).canExecute()) {
+                return candidate;
+            }
+        }
+        return "git";
+    }
+
+    /**
      * Returns a short git status annotation for a file, e.g. "[git: modified, not staged]".
      * Runs a single git command via ProcessBuilder. Returns empty string on any error
      * or if the file is not in a git repo.
@@ -539,7 +557,8 @@ public abstract class FileTool extends Tool {
         if (basePath == null) return "";
 
         try {
-            ProcessBuilder pb = new ProcessBuilder("git", "--no-pager", "status", "--porcelain", "--", pathStr);
+            ProcessBuilder pb = new ProcessBuilder(
+                resolveGitExecutable(), "--no-pager", "status", "--porcelain", "--", pathStr);
             pb.directory(new java.io.File(basePath));
             pb.redirectErrorStream(true);
             pb.environment().put("GIT_TERMINAL_PROMPT", "0");

@@ -28,18 +28,17 @@ import java.util.Map;
  *       charts (one per metric) so users can compare per-feature spend.
  *       Bar charts are used instead of time-series because branches are
  *       discrete categories — a stacked or multi-line time chart over many
- *       branches becomes unreadable and "total spend per branch" is the
- *       actual question being answered.</li>
+ *       short-lived branches is unreadable.</li>
  * </ul>
  */
-class UsageStatisticsPanel extends JBPanel<UsageStatisticsPanel> {
+public class UsageStatisticsPanel extends JBPanel<UsageStatisticsPanel> {
 
     private static final Logger LOG = Logger.getInstance(UsageStatisticsPanel.class);
-
-    private static final String CARD_AGENT = "agent";
-    private static final String CARD_BRANCH = "branch";
+    private static final String CARD_AGENT = "AGENT";
+    private static final String CARD_BRANCH = "BRANCH";
 
     private final transient Project project;
+
     private final ComboBox<UsageStatisticsData.TimeRange> rangeCombo;
     private final ComboBox<UsageStatisticsData.GroupBy> groupByCombo;
 
@@ -47,14 +46,14 @@ class UsageStatisticsPanel extends JBPanel<UsageStatisticsPanel> {
         new EnumMap<>(UsageStatisticsData.Metric.class);
     private final Map<UsageStatisticsData.Metric, BranchComparisonChart> branchCharts =
         new EnumMap<>(UsageStatisticsData.Metric.class);
-
     private final JPanel legendContainer;
-    private final JPanel cardPanel;
-    private final CardLayout cardLayout;
     private final JBLabel branchHintLabel;
 
-    UsageStatisticsPanel(Project project) {
-        super(new BorderLayout());
+    private final CardLayout cardLayout;
+    private final JPanel cardPanel;
+
+    public UsageStatisticsPanel(Project project) {
+        super(new BorderLayout(0, JBUI.scale(8)));
         this.project = project;
         setBorder(JBUI.Borders.empty(12));
 
@@ -66,38 +65,20 @@ class UsageStatisticsPanel extends JBPanel<UsageStatisticsPanel> {
 
         selectorPanel.add(new JBLabel("Period:"));
         selectorPanel.add(Box.createHorizontalStrut(JBUI.scale(6)));
-        rangeCombo = new ComboBox<>(UsageStatisticsData.TimeRange.values());
-        rangeCombo.setSelectedItem(UsageStatisticsData.TimeRange.MONTH_30);
-        rangeCombo.setRenderer(new DefaultListCellRenderer() {
-            @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
-                                                          boolean isSelected, boolean cellHasFocus) {
-                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                if (value instanceof UsageStatisticsData.TimeRange timeRange) {
-                    setText(timeRange.label());
-                }
-                return this;
-            }
-        });
+        rangeCombo = StatisticsComboFactory.createLabeledCombo(
+            UsageStatisticsData.TimeRange.values(),
+            UsageStatisticsData.TimeRange.MONTH_30,
+            UsageStatisticsData.TimeRange::label);
         rangeCombo.addActionListener(e -> reload());
         selectorPanel.add(rangeCombo);
 
         selectorPanel.add(Box.createHorizontalStrut(JBUI.scale(16)));
         selectorPanel.add(new JBLabel("Group by:"));
         selectorPanel.add(Box.createHorizontalStrut(JBUI.scale(6)));
-        groupByCombo = new ComboBox<>(UsageStatisticsData.GroupBy.values());
-        groupByCombo.setSelectedItem(UsageStatisticsData.GroupBy.AGENT);
-        groupByCombo.setRenderer(new DefaultListCellRenderer() {
-            @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
-                                                          boolean isSelected, boolean cellHasFocus) {
-                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                if (value instanceof UsageStatisticsData.GroupBy groupBy) {
-                    setText(groupBy.label());
-                }
-                return this;
-            }
-        });
+        groupByCombo = StatisticsComboFactory.createLabeledCombo(
+            UsageStatisticsData.GroupBy.values(),
+            UsageStatisticsData.GroupBy.AGENT,
+            UsageStatisticsData.GroupBy::label);
         groupByCombo.addActionListener(e -> reload());
         selectorPanel.add(groupByCombo);
 

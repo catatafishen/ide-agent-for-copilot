@@ -6,17 +6,8 @@ import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBPanel;
 import com.intellij.util.ui.JBUI;
 
-import javax.swing.BorderFactory;
-import javax.swing.JPanel;
-import javax.swing.SwingConstants;
-import java.awt.BorderLayout;
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.Font;
-import java.awt.FontMetrics;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
+import javax.swing.*;
+import java.awt.*;
 import java.util.List;
 
 /**
@@ -38,9 +29,9 @@ final class BranchComparisonChart extends JBPanel<BranchComparisonChart> {
     private static final int CANVAS_PADDING = JBUI.scale(8);
 
     private static final Color BAR_TRACK_COLOR = new JBColor(
-        new Color(235, 235, 235), new Color(60, 60, 60));
+        com.intellij.ui.Gray._235, com.intellij.ui.Gray._60);
     private static final Color LABEL_COLOR = new JBColor(
-        new Color(60, 60, 60), new Color(190, 190, 190));
+        com.intellij.ui.Gray._60, com.intellij.ui.Gray._190);
 
     private final UsageStatisticsData.Metric metric;
     private final BarCanvas canvas;
@@ -51,6 +42,7 @@ final class BranchComparisonChart extends JBPanel<BranchComparisonChart> {
         this.metric = metric;
 
         setPreferredSize(new Dimension(JBUI.scale(350), JBUI.scale(220)));
+        setMinimumSize(new Dimension(JBUI.scale(200), JBUI.scale(120)));
 
         JBLabel titleLabel = new JBLabel(title);
         titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD));

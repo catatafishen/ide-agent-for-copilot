@@ -51,7 +51,7 @@ jobs:
         env:
           JAZZER_VERSION: '0.22.0'
         run: |
-          curl -sSfL -o jazzer.tar.gz \
+          curl --proto "=https" -sSfL -o jazzer.tar.gz \
             "https://github.com/CodeIntelligenceTesting/jazzer/releases/download/v${JAZZER_VERSION}/jazzer-linux.tar.gz"
           mkdir -p jazzer-bin
           tar xzf jazzer.tar.gz -C jazzer-bin

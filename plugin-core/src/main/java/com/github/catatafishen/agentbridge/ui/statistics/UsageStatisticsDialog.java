@@ -29,7 +29,8 @@ public class UsageStatisticsDialog extends DialogWrapper {
     @Override
     protected @Nullable JComponent createCenterPanel() {
         JBTabbedPane tabs = new JBTabbedPane();
-        tabs.addTab("Charts", new UsageStatisticsPanel(project));
+        tabs.addTab("Usage Trends", new UsageStatisticsPanel(project));
+        tabs.addTab("Branch Comparison", new BranchComparisonPanel(project));
         tabs.addTab("Tool Statistics", new ToolStatisticsPanel(project));
         return tabs;
     }
@@ -41,7 +42,7 @@ public class UsageStatisticsDialog extends DialogWrapper {
 
     @Override
     public Dimension getPreferredSize() {
-        return JBUI.size(900, 600);
+        return new Dimension(JBUI.scale(1000), JBUI.scale(650));
     }
 
     @Override
