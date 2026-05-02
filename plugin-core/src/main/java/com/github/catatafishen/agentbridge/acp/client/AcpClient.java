@@ -360,8 +360,7 @@ public abstract class AcpClient extends AbstractAgentClient {
             LOG.debug(displayName() + ": session/new raw response: " + result);
 
             NewSessionResponse response = gson.fromJson(result, NewSessionResponse.class);
-            LOG.debug(displayName() + ": session/new: " + (response.models() != null ? response.models().size() : 0) + " model(s), "
-                + (response.modes() != null ? response.modes().size() : 0) + " mode(s)");
+            logModelList("session/new", response.models());
 
             currentSessionId = response.sessionId();
             processSessionResponse(response);
@@ -448,6 +447,21 @@ public abstract class AcpClient extends AbstractAgentClient {
         if (response.configOptions() != null) {
             updateConfigOptions(response);
         }
+    }
+
+    /**
+     * Logs model IDs received from a session response at INFO level.
+     * Aids diagnosis of stale model list reports (ref: issue #416).
+     */
+    private void logModelList(String source, @Nullable List<Model> models) {
+        if (models == null || models.isEmpty()) {
+            LOG.info(displayName() + ": " + source + " returned 0 model(s)");
+            return;
+        }
+        String ids = models.stream()
+            .map(Model::id)
+            .collect(java.util.stream.Collectors.joining(", "));
+        LOG.info(displayName() + ": " + source + " returned " + models.size() + " model(s): [" + ids + "]");
     }
 
     static List<AbstractAgentClient.AgentMode> mapModesStatic(@Nullable List<NewSessionResponse.AvailableMode> modes) {
@@ -573,6 +587,7 @@ public abstract class AcpClient extends AbstractAgentClient {
             // Some agents (e.g. OpenCode's session/resume) return models/modes/configOptions.
             if (result != null && !result.isJsonNull()) {
                 NewSessionResponse response = gson.fromJson(result, NewSessionResponse.class);
+                logModelList(method, response.models());
                 processSessionResponse(response);
             }
         } finally {
