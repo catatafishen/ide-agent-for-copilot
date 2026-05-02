@@ -7,6 +7,21 @@
 
 /// <reference path="./globals.d.ts" />
 
+import {PaneSwiper} from './components/PaneSwiper';
+import {FileViewer} from './components/FileViewer';
+import {FileNav} from './components/FileNav';
+import {ReviewView} from './components/ReviewView';
+import {TodoView} from './components/TodoView';
+import {SessionView} from './components/SessionView';
+
+// Register PWA-only custom elements
+customElements.define('pane-swiper', PaneSwiper);
+customElements.define('file-viewer', FileViewer);
+customElements.define('file-nav', FileNav);
+customElements.define('review-view', ReviewView);
+customElements.define('todo-view', TodoView);
+customElements.define('session-view', SessionView);
+
 // ── Bridge: replaces native Kotlin bridge with fetch-based implementations ──
 
 globalThis._bridge = {
@@ -68,6 +83,112 @@ const mcpText = document.getElementById('ab-mcp-text')!;
 const chatAreaEl = document.getElementById('ab-chat')!;
 const footerEl = document.getElementById('ab-footer')!;
 const menuModelSection = document.getElementById('ab-menu-model-section')!;
+
+// ── Pane swiper: file viewer (left) + chat (right) ─────────────────────────
+
+const swiper = document.createElement('pane-swiper') as PaneSwiper;
+chatAreaEl.parentElement!.insertBefore(swiper, chatAreaEl);
+
+// Wait for custom element to initialize
+requestAnimationFrame(() => {
+    // Move chat area into the right pane
+    swiper.rightPane.appendChild(chatAreaEl);
+
+    // Set labels on existing panes
+    swiper.setTabLabel(0, 'Files');
+    swiper.setTabLabel(1, 'Chat');
+
+    // Create file viewer in the left pane
+    const fileViewer = document.createElement('file-viewer') as FileViewer;
+    swiper.leftPane.appendChild(fileViewer);
+
+    // Create and attach file nav inside the viewer
+    const fileNav = document.createElement('file-nav') as FileNav;
+    fileViewer.navSlot.appendChild(fileNav);
+
+    // Wire file nav to the server endpoints
+    fileNav.configure(
+        async (dir: string) => {
+            const resp = await fetch(`/list-files?path=${encodeURIComponent(dir)}`);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json() as {
+                entries: Array<{ name: string; path: string; isDirectory: boolean; size?: number }>
+            };
+            return data.entries;
+        },
+        (path: string) => openFileInViewer(path),
+    );
+
+    // Handle clicks on recent files in the file viewer empty state
+    fileViewer.addEventListener('open-file', (e) => {
+        const path = (e as CustomEvent).detail?.path;
+        if (path) openFileInViewer(path);
+    });
+
+    // Override bridge.openFile to fetch and display in the viewer
+    globalThis._bridge!.openFile = (href: string) => {
+        let path = href;
+        let line: number | undefined;
+        if (path.startsWith('openfile://')) {
+            path = path.substring('openfile://'.length);
+        }
+        // Extract line number: path:42
+        const colonIdx = path.lastIndexOf(':');
+        if (colonIdx > 0) {
+            const maybeLine = Number.parseInt(path.substring(colonIdx + 1), 10);
+            if (!Number.isNaN(maybeLine)) {
+                line = maybeLine;
+                path = path.substring(0, colonIdx);
+            }
+        }
+        openFileInViewer(path, line);
+    };
+
+    async function openFileInViewer(path: string, line?: number): Promise<void> {
+        try {
+            const resp = await fetch(`/file?path=${encodeURIComponent(path)}`);
+            if (!resp.ok) {
+                console.error(`[AB] File fetch failed: HTTP ${resp.status} for ${path}`);
+                return;
+            }
+            const data = await resp.json() as { content: string; path: string };
+            fileViewer.showFile(data.path, data.content);
+            fileNav.showPath(data.path);
+            swiper.switchTo(0); // Switch to file viewer pane
+            if (line) {
+                requestAnimationFrame(() => fileViewer.scrollToLine(line));
+            }
+        } catch (e) {
+            console.error('[AB] File fetch error:', e);
+        }
+    }
+
+    // Listen for pane changes to re-focus appropriately
+    swiper.addEventListener('pane-changed', (e) => {
+        const index = (e as CustomEvent).detail?.index;
+        footerEl.style.display = index === 1 ? '' : 'none';
+        if (index === 1) {
+            inputEl.focus();
+        }
+        // Refresh the view when switching to it
+        if (index === 2) reviewView.refresh();
+        else if (index === 3) todoView.refresh();
+        else if (index === 4) sessionView.refresh();
+    });
+
+    // Add side panel panes
+    const reviewPane = swiper.addPane('Review');
+    const reviewView = document.createElement('review-view') as ReviewView;
+    reviewPane.appendChild(reviewView);
+
+    const todoPane = swiper.addPane('Plan');
+    const todoView = document.createElement('todo-view') as TodoView;
+    todoPane.appendChild(todoView);
+
+    const sessionPane = swiper.addPane('Session');
+    const sessionView = document.createElement('session-view') as SessionView;
+    sessionPane.appendChild(sessionView);
+});
 
 // ── Auto-scroll: track whether user is near the bottom ──────────────────────
 
