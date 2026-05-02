@@ -804,11 +804,7 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
     private @Nullable String readCurrentContent(@NotNull String path) {
         VirtualFile vf = LocalFileSystem.getInstance().findFileByPath(path);
         if (vf == null) return null;
-        // getDocument() requires a read action, not just getText().
-        String text = ReadAction.compute(() -> {
-            Document doc = FileDocumentManager.getInstance().getDocument(vf);
-            return doc != null ? doc.getText() : null;
-        });
+        String text = readDocumentText(vf);
         if (text != null) return text;
         try {
             return new String(vf.contentsToByteArray(), StandardCharsets.UTF_8);
@@ -816,6 +812,20 @@ public final class AgentEditSession implements Disposable, PersistentStateCompon
             LOG.warn("Failed to read current content for review line counts: " + path, e);
             return null;
         }
+    }
+
+    /**
+     * Reads the document text under a read action, returning {@code null} when the
+     * platform has no live document for the file (e.g. binary, deleted, or not opened).
+     * Extracted so the {@code @Nullable} contract is visible to static analysis — without
+     * it, Sonar incorrectly assumes {@link ReadAction#compute} returns non-null.
+     */
+    private static @Nullable String readDocumentText(@NotNull VirtualFile vf) {
+        // getDocument() requires a read action, not just getText().
+        return ReadAction.compute(() -> {
+            Document doc = FileDocumentManager.getInstance().getDocument(vf);
+            return doc != null ? doc.getText() : null;
+        });
     }
 
     static int countLines(@Nullable String content) {

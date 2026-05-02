@@ -257,7 +257,7 @@ public final class OpenCodeClientExporter {
         StringBuilder sb = new StringBuilder("[Subagent");
         sb.append(" (").append(subAgent.getAgentType()).append(")");
         String desc = subAgent.getDescription();
-        if (desc != null && !desc.isEmpty()) sb.append(": ").append(desc);
+        if (!desc.isEmpty()) sb.append(": ").append(desc);
         sb.append("]");
         String subResult = subAgent.getResult();
         if (subResult != null && !subResult.isBlank()) {

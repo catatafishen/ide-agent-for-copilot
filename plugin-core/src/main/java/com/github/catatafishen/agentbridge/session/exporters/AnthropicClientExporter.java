@@ -179,7 +179,7 @@ public final class AnthropicClientExporter {
                 flushPending();
                 currentTimestamp = parseTimestamp(text.getTimestamp());
                 String entryModel = text.getModel();
-                currentModel = (entryModel != null && !entryModel.isEmpty()) ? entryModel : "";
+                currentModel = !entryModel.isEmpty() ? entryModel : "";
             }
             assistantBlocks.add(textBlock(content));
         }
