@@ -40,6 +40,14 @@ class McpGroupConfigurable(private val project: Project) :
             spinner(1024..65535, 1)
                 .bindIntValue({ settings.port }, { settings.port = it })
         }
+        row {
+            checkBox("Static port (fail if busy instead of auto-allocating)")
+                .comment(
+                    "When enabled, the server will not try alternative ports if the configured " +
+                        "port is already in use — it will fail with an error instead."
+                )
+                .bindSelected({ settings.isStaticPort }, { settings.isStaticPort = it })
+        }
         row("Transport mode:") {
             comboBox(TransportMode.entries.toList())
                 .applyToComponent {
