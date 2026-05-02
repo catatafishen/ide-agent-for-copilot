@@ -282,74 +282,90 @@ public final class ChatWebServer implements Disposable {
         boolean isStatic = settings.isStaticPort();
         boolean https = settings.isHttpsEnabled();
 
-        SSLContext sslContext = null;
-        if (https) {
-            try {
-                sslContext = buildSslContext();
-            } catch (Exception e) {
-                throw new IOException("Failed to create TLS context for Chat Web Server", e);
-            }
-        }
+        SSLContext sslContext = https ? createSslContextOrThrow() : null;
 
         var executor = Executors.newCachedThreadPool();
         serverExecutor = executor;
 
+        bindServers(port, isStatic, https, settings);
+        configureAndStartServers(executor, sslContext, https);
+
+        refreshAvailableProfiles();
+        running = true;
+    }
+
+    private SSLContext createSslContextOrThrow() throws IOException {
+        try {
+            return buildSslContext();
+        } catch (Exception e) {
+            throw new IOException("Failed to create TLS context for Chat Web Server", e);
+        }
+    }
+
+    private void bindServers(int port, boolean isStatic, boolean https,
+                             ChatWebServerSettings settings) throws IOException {
         if (isStatic) {
-            // Static port mode: fail immediately if port is unavailable
+            bindStaticPort(port, https);
+        } else {
+            bindDynamicPort(port, https, settings);
+        }
+    }
+
+    private void bindStaticPort(int port, boolean https) throws IOException {
+        try {
+            if (https) {
+                httpsServer = HttpsServer.create(new InetSocketAddress(BIND_ALL_INTERFACES, port), 0);
+            }
+            httpServer = HttpServer.create(new InetSocketAddress(BIND_ALL_INTERFACES, port + (https ? 1 : 0)), 0);
+        } catch (IOException e) {
+            cleanupPartialBind();
+            throw new IOException("Chat Web Server port " + port + " is already in use. "
+                + "Disable 'Static Port' in settings to allow automatic port allocation, "
+                + "or free port " + port + " and try again.", e);
+        }
+    }
+
+    private void bindDynamicPort(int port, boolean https,
+                                 ChatWebServerSettings settings) throws IOException {
+        IOException lastError = null;
+        for (int attempt = 0; attempt < 10; attempt++) {
+            int tryPort = port + attempt;
             try {
                 if (https) {
-                    httpsServer = HttpsServer.create(new InetSocketAddress(BIND_ALL_INTERFACES, port), 0);
+                    httpsServer = HttpsServer.create(new InetSocketAddress(BIND_ALL_INTERFACES, tryPort), 0);
                 }
-                httpServer = HttpServer.create(new InetSocketAddress(BIND_ALL_INTERFACES, port + (https ? 1 : 0)), 0);
+                httpServer = HttpServer.create(new InetSocketAddress(BIND_ALL_INTERFACES, tryPort + (https ? 1 : 0)), 0);
+                if (attempt > 0) settings.setPort(tryPort);
+                return;
             } catch (IOException e) {
-                if (httpsServer != null) {
-                    httpsServer.stop(0);
-                    httpsServer = null;
-                }
-                if (httpServer != null) {
-                    httpServer.stop(0);
-                    httpServer = null;
-                }
-                throw new IOException("Chat Web Server port " + port + " is already in use. "
-                    + "Disable 'Static Port' in settings to allow automatic port allocation, "
-                    + "or free port " + port + " and try again.", e);
+                cleanupPartialBind();
+                lastError = e;
             }
-        } else {
-            // Dynamic mode: try configured port, then auto-allocate
-            IOException lastError = null;
-            for (int attempt = 0; attempt < 10; attempt++) {
-                int tryPort = port + attempt;
-                try {
-                    if (https) {
-                        httpsServer = HttpsServer.create(new InetSocketAddress(BIND_ALL_INTERFACES, tryPort), 0);
-                    }
-                    httpServer = HttpServer.create(new InetSocketAddress(BIND_ALL_INTERFACES, tryPort + (https ? 1 : 0)), 0);
-                    if (attempt > 0) settings.setPort(tryPort);
-                    break;
-                } catch (IOException e) {
-                    if (httpsServer != null) {
-                        httpsServer.stop(0);
-                        httpsServer = null;
-                    }
-                    if (httpServer != null) {
-                        httpServer.stop(0);
-                        httpServer = null;
-                    }
-                    lastError = e;
-                }
-            }
-            boolean bound = https ? (httpsServer != null && httpServer != null) : httpServer != null;
-            if (!bound) throw new IOException("Cannot bind Chat Web Server to any port near " + port, lastError);
         }
+        boolean bound = https ? (httpsServer != null && httpServer != null) : httpServer != null;
+        if (!bound) throw new IOException("Cannot bind Chat Web Server to any port near " + port, lastError);
+    }
 
+    private void cleanupPartialBind() {
+        if (httpsServer != null) {
+            httpsServer.stop(0);
+            httpsServer = null;
+        }
+        if (httpServer != null) {
+            httpServer.stop(0);
+            httpServer = null;
+        }
+    }
+
+    private void configureAndStartServers(ExecutorService executor, SSLContext sslContext,
+                                          boolean https) {
         httpServer.setExecutor(executor);
         if (https) {
             registerContexts(httpsServer);
-            SSLContext finalSslContext = sslContext;
-            httpsServer.setHttpsConfigurator(new HttpsConfigurator(finalSslContext) {
+            httpsServer.setHttpsConfigurator(new HttpsConfigurator(sslContext) {
                 @Override
                 public void configure(com.sun.net.httpserver.HttpsParameters params) {
-                    SSLParameters sslParams = finalSslContext.getDefaultSSLParameters();
+                    SSLParameters sslParams = sslContext.getDefaultSSLParameters();
                     params.setSSLParameters(sslParams);
                 }
             });
@@ -367,10 +383,6 @@ public final class ChatWebServer implements Disposable {
             LOG.info("[ChatWebServer] started (HTTP:" + httpServer.getAddress().getPort()
                 + ") for project: " + project.getBasePath());
         }
-
-        // Populate available profiles for the connect page
-        refreshAvailableProfiles();
-        running = true;
     }
 
     private void registerContexts(HttpServer server) {
