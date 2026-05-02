@@ -4,6 +4,7 @@ import kotlin.text.MatchResult;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -91,40 +92,19 @@ class SearchResultRendererTest {
     @Nested
     class CountHeader {
 
-        @Test
-        void matchesMatchesFound() {
-            MatchResult match = R.getCOUNT_HEADER().find("15 matches found in 3 files", 0);
+        @ParameterizedTest
+        @CsvSource(delimiter = '|', value = {
+            "15 matches found in 3 files|15|matches",
+            "7 results in project|7|results",
+            "3 references found|3|references",
+            "1 symbol found|1|symbol"
+        })
+        void matchesCountVariants(String input, String expectedCount, String expectedType) {
+            MatchResult match = R.getCOUNT_HEADER().find(input, 0);
 
             assertNotNull(match);
-            assertEquals("15", match.getGroupValues().get(1));
-            assertEquals("matches", match.getGroupValues().get(2));
-        }
-
-        @Test
-        void matchesResults() {
-            MatchResult match = R.getCOUNT_HEADER().find("7 results in project", 0);
-
-            assertNotNull(match);
-            assertEquals("7", match.getGroupValues().get(1));
-            assertEquals("results", match.getGroupValues().get(2));
-        }
-
-        @Test
-        void matchesReferences() {
-            MatchResult match = R.getCOUNT_HEADER().find("3 references found", 0);
-
-            assertNotNull(match);
-            assertEquals("3", match.getGroupValues().get(1));
-            assertEquals("references", match.getGroupValues().get(2));
-        }
-
-        @Test
-        void matchesSymbol() {
-            MatchResult match = R.getCOUNT_HEADER().find("1 symbol found", 0);
-
-            assertNotNull(match);
-            assertEquals("1", match.getGroupValues().get(1));
-            assertEquals("symbol", match.getGroupValues().get(2));
+            assertEquals(expectedCount, match.getGroupValues().get(1));
+            assertEquals(expectedType, match.getGroupValues().get(2));
         }
 
         @Test

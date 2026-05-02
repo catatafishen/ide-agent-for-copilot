@@ -2,6 +2,8 @@ package com.github.catatafishen.agentbridge.ui.renderers;
 
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 
@@ -50,24 +52,10 @@ class HttpRequestRendererTest {
             assertEquals(301, info.code());
         }
 
-        @Test
-        void returnsNullForNonHttpLine() {
-            assertNull(HttpRequestRenderer.parseStatusLine("Not an HTTP response"));
-        }
-
-        @Test
-        void returnsNullForEmptyString() {
-            assertNull(HttpRequestRenderer.parseStatusLine(""));
-        }
-
-        @Test
-        void returnsNullForHttpWithoutSpace() {
-            assertNull(HttpRequestRenderer.parseStatusLine("HTTP200"));
-        }
-
-        @Test
-        void returnsNullForNonNumericCode() {
-            assertNull(HttpRequestRenderer.parseStatusLine("HTTP abc OK"));
+        @ParameterizedTest
+        @ValueSource(strings = {"Not an HTTP response", "", "HTTP200", "HTTP abc OK"})
+        void returnsNullForInvalidInput(String input) {
+            assertNull(HttpRequestRenderer.parseStatusLine(input));
         }
 
         @Test
