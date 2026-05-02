@@ -2,6 +2,8 @@ package com.github.catatafishen.agentbridge.ui;
 
 import com.github.catatafishen.agentbridge.agent.AgentException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.function.Function;
@@ -306,15 +308,10 @@ class PromptErrorClassifierTest {
         assertEquals(List.of("A"), replies);
     }
 
-    @Test
-    void detectQuickReplies_noTag_returnsEmptyList() {
-        List<String> replies = PromptErrorClassifier.INSTANCE.detectQuickReplies("no quick replies here");
-        assertTrue(replies.isEmpty());
-    }
-
-    @Test
-    void detectQuickReplies_emptyString_returnsEmptyList() {
-        List<String> replies = PromptErrorClassifier.INSTANCE.detectQuickReplies("");
+    @ParameterizedTest
+    @ValueSource(strings = {"no quick replies here", "", "[quick-reply: | | ]"})
+    void detectQuickReplies_noValidReplies_returnsEmptyList(String input) {
+        List<String> replies = PromptErrorClassifier.INSTANCE.detectQuickReplies(input);
         assertTrue(replies.isEmpty());
     }
 
@@ -342,12 +339,6 @@ class PromptErrorClassifierTest {
     void detectQuickReplies_extraWhitespaceInTag_parsesCorrectly() {
         List<String> replies = PromptErrorClassifier.INSTANCE.detectQuickReplies("[  quick-reply:  Yes  |  No  ]");
         assertEquals(List.of("Yes", "No"), replies);
-    }
-
-    @Test
-    void detectQuickReplies_onlyPipeSeparators_filtersEmptyStrings() {
-        List<String> replies = PromptErrorClassifier.INSTANCE.detectQuickReplies("[quick-reply: | | ]");
-        assertTrue(replies.isEmpty());
     }
 
     @Test
