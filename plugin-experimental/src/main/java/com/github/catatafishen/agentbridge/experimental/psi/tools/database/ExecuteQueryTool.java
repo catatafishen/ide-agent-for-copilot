@@ -153,7 +153,7 @@ public final class ExecuteQueryTool extends DatabaseTool {
             for (int i = 0; i < colCount; i++) {
                 String val = rs.getString(i + 1);
                 row[i] = val != null ? val : "NULL";
-                colWidths[i] = Math.max(colWidths[i], Math.min(row[i].length(), 50));
+                colWidths[i] = Math.clamp(row[i].length(), colWidths[i], 50);
             }
             rows.add(row);
         }

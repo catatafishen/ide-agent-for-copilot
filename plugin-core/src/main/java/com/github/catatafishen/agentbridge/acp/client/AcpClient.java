@@ -820,7 +820,7 @@ public abstract class AcpClient extends AbstractAgentClient {
                     "Agent inactive for " + silenceSec + "s (no session/update received)"
                 );
             }
-            long waitMillis = Math.max(1L, Math.min(pollMs, TimeUnit.NANOSECONDS.toMillis(remainingNanos)));
+            long waitMillis = Math.clamp(TimeUnit.NANOSECONDS.toMillis(remainingNanos), 1L, pollMs);
             try {
                 return future.get(waitMillis, TimeUnit.MILLISECONDS);
             } catch (java.util.concurrent.TimeoutException e) {
