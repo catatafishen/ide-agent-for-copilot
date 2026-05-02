@@ -2,12 +2,17 @@ package com.github.catatafishen.agentbridge.settings;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -122,25 +127,9 @@ class ConversationFileUtilsTest {
 
     // ── formatTimestamp ─────────────────────────────────────────────────
 
-    @Test
-    void formatTimestamp_validFormat() {
-        String input = "2025-01-15T14-30-00";
-        LocalDateTime dateTime = LocalDateTime.parse(input, ConversationFileUtils.TIMESTAMP_PARSER);
-        String expected = dateTime.format(ConversationFileUtils.DISPLAY_FORMATTER);
-        assertEquals(expected, ConversationFileUtils.formatTimestamp(input));
-    }
-
-    @Test
-    void formatTimestamp_anotherValidTimestamp() {
-        String input = "2024-12-31T23-59-59";
-        LocalDateTime dateTime = LocalDateTime.parse(input, ConversationFileUtils.TIMESTAMP_PARSER);
-        String expected = dateTime.format(ConversationFileUtils.DISPLAY_FORMATTER);
-        assertEquals(expected, ConversationFileUtils.formatTimestamp(input));
-    }
-
-    @Test
-    void formatTimestamp_midnightTimestamp() {
-        String input = "2025-06-01T00-00-00";
+    @ParameterizedTest
+    @ValueSource(strings = {"2025-01-15T14-30-00", "2024-12-31T23-59-59", "2025-06-01T00-00-00"})
+    void formatTimestamp_validFormat(String input) {
         LocalDateTime dateTime = LocalDateTime.parse(input, ConversationFileUtils.TIMESTAMP_PARSER);
         String expected = dateTime.format(ConversationFileUtils.DISPLAY_FORMATTER);
         assertEquals(expected, ConversationFileUtils.formatTimestamp(input));
@@ -257,31 +246,22 @@ class ConversationFileUtilsTest {
         assertEquals(5, ConversationFileUtils.countMessages(file));
     }
 
-    @Test
-    void countMessages_invalidJson_returnsNegativeOne(@TempDir Path tempDir) throws IOException {
-        Path file = tempDir.resolve("invalid.json");
-        Files.writeString(file, "this is not json");
-        assertEquals(-1, ConversationFileUtils.countMessages(file));
+    static Stream<Arguments> countMessages_negativeOneInputs() {
+        return Stream.of(
+            Arguments.of("invalid.json", "this is not json"),
+            Arguments.of("object.json", "{\"key\":\"value\"}"),
+            Arguments.of("empty.txt", ""),
+            Arguments.of("nofile.json", null)
+        );
     }
 
-    @Test
-    void countMessages_jsonObject_returnsNegativeOne(@TempDir Path tempDir) throws IOException {
-        // A JSON object (not array) should cause getAsJsonArray() to fail
-        Path file = tempDir.resolve("object.json");
-        Files.writeString(file, "{\"key\":\"value\"}");
-        assertEquals(-1, ConversationFileUtils.countMessages(file));
-    }
-
-    @Test
-    void countMessages_emptyFile_returnsNegativeOne(@TempDir Path tempDir) throws IOException {
-        Path file = tempDir.resolve("empty.txt");
-        Files.writeString(file, "");
-        assertEquals(-1, ConversationFileUtils.countMessages(file));
-    }
-
-    @Test
-    void countMessages_nonExistentFile_returnsNegativeOne(@TempDir Path tempDir) {
-        Path file = tempDir.resolve("does-not-exist.json");
+    @ParameterizedTest
+    @MethodSource("countMessages_negativeOneInputs")
+    void countMessages_invalidInput_returnsNegativeOne(String filename, String content, @TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve(filename);
+        if (content != null) {
+            Files.writeString(file, content);
+        }
         assertEquals(-1, ConversationFileUtils.countMessages(file));
     }
 

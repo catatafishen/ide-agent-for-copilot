@@ -1,9 +1,13 @@
 package com.github.catatafishen.agentbridge.ui;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -266,35 +270,23 @@ class PromptBubbleBuilderTest {
         assertTrue(result.contains("&#39;xss&#39;"));
     }
 
-    @Test
-    void buildBubbleHtml_ampersandInPromptText_escaped() {
-        ContextItemData item = fileItem("f.java", "f.java");
-        String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-            "a & b " + ORC, List.of(item));
-
-        assertNotNull(result);
-        assertTrue(result.contains("a &amp; b"));
+    static Stream<Arguments> buildBubbleHtml_escapingInputs() {
+        return Stream.of(
+            Arguments.of("a & b ", "a &amp; b"),
+            Arguments.of("say \"hello\" ", "&quot;hello&quot;"),
+            Arguments.of("line1\nline2 ", "line1\nline2")
+        );
     }
 
-    @Test
-    void buildBubbleHtml_doubleQuotesInPromptText_escapedViaAppendHtmlChar() {
+    @ParameterizedTest
+    @MethodSource("buildBubbleHtml_escapingInputs")
+    void buildBubbleHtml_specialCharsInPromptText_handled(String inputPrefix, String expectedFragment) {
         ContextItemData item = fileItem("f.java", "f.java");
         String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-            "say \"hello\" " + ORC, List.of(item));
+            inputPrefix + ORC, List.of(item));
 
         assertNotNull(result);
-        // appendHtmlChar encodes double-quote characters as HTML &quot; entities
-        assertTrue(result.contains("&quot;hello&quot;"));
-    }
-
-    @Test
-    void buildBubbleHtml_newlineInPromptText_preserved() {
-        ContextItemData item = fileItem("f.java", "f.java");
-        String result = PromptBubbleBuilder.INSTANCE.buildBubbleHtml(
-            "line1\nline2 " + ORC, List.of(item));
-
-        assertNotNull(result);
-        assertTrue(result.contains("line1\nline2"));
+        assertTrue(result.contains(expectedFragment));
     }
 
     // ── buildBubbleHtml — HTML in item name / path ──────────────────────

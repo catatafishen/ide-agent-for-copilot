@@ -5,6 +5,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -247,31 +248,10 @@ class ToolCallArgParserTest {
             assertEquals("", parser.extractTaskCompleteSummary("  "));
         }
 
-        @Test
-        @DisplayName("returns raw text when no summary key")
-        void returnsRawWhenNoSummaryKey() {
-            String raw = "{\"result\":\"ok\"}";
-            assertEquals(raw, parser.extractTaskCompleteSummary(raw));
-        }
-
-        @Test
-        @DisplayName("returns raw text for invalid JSON")
-        void returnsRawForInvalidJson() {
-            String raw = "plain text summary";
-            assertEquals(raw, parser.extractTaskCompleteSummary(raw));
-        }
-
-        @Test
-        @DisplayName("returns raw text for JSON array")
-        void returnsRawForJsonArray() {
-            String raw = "[\"a\",\"b\"]";
-            assertEquals(raw, parser.extractTaskCompleteSummary(raw));
-        }
-
-        @Test
-        @DisplayName("ignores non-primitive summary value")
-        void ignoresNonPrimitiveSummary() {
-            String raw = "{\"summary\":{\"detail\":\"nested\"}}";
+        @ParameterizedTest
+        @DisplayName("returns raw text when summary is absent or unparseable")
+        @ValueSource(strings = {"{\"result\":\"ok\"}", "plain text summary", "[\"a\",\"b\"]", "{\"summary\":{\"detail\":\"nested\"}}"})
+        void returnsRawWhenNoSummary(String raw) {
             assertEquals(raw, parser.extractTaskCompleteSummary(raw));
         }
     }
@@ -312,46 +292,12 @@ class ToolCallArgParserTest {
             assertEquals("", result.getSecond());
         }
 
-        @Test
-        @DisplayName("returns null when both old_str and new_str are blank")
-        void returnsNullWhenBothBlank() {
-            assertNull(parser.extractDiffFromArgs("{\"old_str\":\"\",\"new_str\":\"\"}"));
-        }
-
-        @Test
-        @DisplayName("returns null for null arguments")
-        void returnsNullForNull() {
-            assertNull(parser.extractDiffFromArgs(null));
-        }
-
-        @Test
-        @DisplayName("returns null for blank arguments")
-        void returnsNullForBlank() {
-            assertNull(parser.extractDiffFromArgs("  "));
-        }
-
-        @Test
-        @DisplayName("returns null for invalid JSON")
-        void returnsNullForInvalidJson() {
-            assertNull(parser.extractDiffFromArgs("not json"));
-        }
-
-        @Test
-        @DisplayName("returns null when old_str is missing")
-        void returnsNullWhenOldStrMissing() {
-            assertNull(parser.extractDiffFromArgs("{\"new_str\":\"bar\"}"));
-        }
-
-        @Test
-        @DisplayName("returns null when new_str is missing")
-        void returnsNullWhenNewStrMissing() {
-            assertNull(parser.extractDiffFromArgs("{\"old_str\":\"foo\"}"));
-        }
-
-        @Test
-        @DisplayName("returns null when neither key present")
-        void returnsNullWhenNeitherKey() {
-            assertNull(parser.extractDiffFromArgs("{\"content\":\"something\"}"));
+        @ParameterizedTest
+        @DisplayName("returns null for invalid or incomplete arguments")
+        @NullSource
+        @ValueSource(strings = {"  ", "not json", "{\"old_str\":\"\",\"new_str\":\"\"}", "{\"new_str\":\"bar\"}", "{\"old_str\":\"foo\"}", "{\"content\":\"something\"}"})
+        void returnsNullForInvalidInput(String args) {
+            assertNull(parser.extractDiffFromArgs(args));
         }
     }
 
