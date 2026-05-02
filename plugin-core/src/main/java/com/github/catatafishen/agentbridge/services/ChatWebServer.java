@@ -79,6 +79,7 @@ public final class ChatWebServer implements Disposable {
     private static final Logger LOG = Logger.getInstance(ChatWebServer.class);
     private static final Gson GSON = new Gson();
     private static final String JS_CONTENT_TYPE = "text/javascript; charset=utf-8";
+    private static final String JSON_CONTENT_TYPE = "application/json; charset=utf-8";
     private static final String SEQ_PREFIX = "{\"seq\":";
     private static final String HDR_CONTENT_TYPE = "Content-Type";
     private static final String HDR_CACHE_CONTROL = "Cache-Control";
@@ -396,7 +397,7 @@ public final class ChatWebServer implements Disposable {
         server.createContext("/icon-192.png", ex -> handleIconPng(ex, 192));
         server.createContext("/icon-512.png", ex -> handleIconPng(ex, 512));
         server.createContext("/badge-96.png", this::handleBadgePng);
-        server.createContext("/manifest.json", ex -> serveClasspath(ex, "/chat/manifest.json", "application/json; charset=utf-8"));
+        server.createContext("/manifest.json", ex -> serveClasspath(ex, "/chat/manifest.json", JSON_CONTENT_TYPE));
         server.createContext("/sw.js", ex -> serveClasspath(ex, "/chat/sw.js", JS_CONTENT_TYPE));
         server.createContext("/cert.crt", this::handleCert);
         server.createContext("/events", this::handleSse);
@@ -454,6 +455,11 @@ public final class ChatWebServer implements Disposable {
         server.createContext("/load-more", ex -> handleAction(ex, body -> {
             if (onLoadMore != null) onLoadMore.run();
         }));
+        server.createContext("/file", this::handleFileRead);
+        server.createContext("/list-files", this::handleListFiles);
+        server.createContext("/plan", this::handlePlan);
+        server.createContext("/session-stats", this::handleSessionStats);
+        server.createContext("/review-items", this::handleReviewItems);
     }
 
     private void registerCertOnlyContext(HttpServer server) {
@@ -1528,12 +1534,233 @@ public final class ChatWebServer implements Disposable {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    private void handleFileRead(HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set(HDR_ACCESS_CONTROL_ORIGIN, "*");
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            exchange.close();
+            return;
+        }
+
+        String query = exchange.getRequestURI().getQuery();
+        String path = null;
+        if (query != null) {
+            for (String param : query.split("&")) {
+                if (param.startsWith("path=")) {
+                    path = java.net.URLDecoder.decode(param.substring(5), StandardCharsets.UTF_8);
+                }
+            }
+        }
+        if (path == null || path.isEmpty()) {
+            String error = "{\"error\":\"Missing 'path' query parameter\"}";
+            sendJson(exchange, error);
+            return;
+        }
+
+        String basePath = project.getBasePath();
+        if (basePath == null) {
+            sendJson(exchange, "{\"error\":\"Project base path not available\"}");
+            return;
+        }
+
+        java.nio.file.Path projectRoot = java.nio.file.Path.of(basePath);
+        java.nio.file.Path resolved = projectRoot.resolve(path).normalize();
+
+        // Security: prevent path traversal outside project root
+        if (!resolved.startsWith(projectRoot)) {
+            exchange.sendResponseHeaders(403, -1);
+            exchange.close();
+            return;
+        }
+
+        if (!java.nio.file.Files.isRegularFile(resolved)) {
+            String error = "{\"error\":\"File not found: " + path.replace("\"", "\\\"") + "\"}";
+            byte[] bytes = error.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set(HDR_CONTENT_TYPE, JSON_CONTENT_TYPE);
+            exchange.sendResponseHeaders(404, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+            return;
+        }
+
+        // Limit file size to 1 MB to avoid memory issues
+        long size = java.nio.file.Files.size(resolved);
+        if (size > 1_048_576) {
+            sendJson(exchange, "{\"error\":\"File too large (max 1 MB)\"}");
+            return;
+        }
+
+        String content = java.nio.file.Files.readString(resolved, StandardCharsets.UTF_8);
+        String relativePath = projectRoot.relativize(resolved).toString().replace('\\', '/');
+
+        com.google.gson.JsonObject json = new com.google.gson.JsonObject();
+        json.addProperty("path", relativePath);
+        json.addProperty("content", content);
+        json.addProperty("size", size);
+        sendJson(exchange, GSON.toJson(json));
+    }
+
+    private void handleListFiles(HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set(HDR_ACCESS_CONTROL_ORIGIN, "*");
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            exchange.close();
+            return;
+        }
+
+        String query = exchange.getRequestURI().getQuery();
+        String path = "";
+        if (query != null) {
+            for (String param : query.split("&")) {
+                if (param.startsWith("path=")) {
+                    path = java.net.URLDecoder.decode(param.substring(5), StandardCharsets.UTF_8);
+                }
+            }
+        }
+
+        String basePath = project.getBasePath();
+        if (basePath == null) {
+            sendJson(exchange, "{\"error\":\"Project base path not available\"}");
+            return;
+        }
+
+        java.nio.file.Path projectRoot = java.nio.file.Path.of(basePath);
+        java.nio.file.Path dir = path.isEmpty() ? projectRoot : projectRoot.resolve(path).normalize();
+
+        // Security: prevent path traversal outside project root
+        if (!dir.startsWith(projectRoot)) {
+            exchange.sendResponseHeaders(403, -1);
+            exchange.close();
+            return;
+        }
+
+        if (!java.nio.file.Files.isDirectory(dir)) {
+            sendJson(exchange, "{\"error\":\"Not a directory\"}");
+            return;
+        }
+
+        com.google.gson.JsonArray entries = new com.google.gson.JsonArray();
+        try (var stream = java.nio.file.Files.list(dir)) {
+            stream
+                .filter(p -> !p.getFileName().toString().startsWith("."))
+                .filter(p -> !isExcludedDir(p))
+                .sorted((a, b) -> {
+                    boolean aDir = java.nio.file.Files.isDirectory(a);
+                    boolean bDir = java.nio.file.Files.isDirectory(b);
+                    if (aDir != bDir) return aDir ? -1 : 1;
+                    return a.getFileName().toString().compareToIgnoreCase(b.getFileName().toString());
+                })
+                .forEach(p -> {
+                    com.google.gson.JsonObject entry = new com.google.gson.JsonObject();
+                    String name = p.getFileName().toString();
+                    String relPath = projectRoot.relativize(p).toString().replace('\\', '/');
+                    entry.addProperty("name", name);
+                    entry.addProperty("path", relPath);
+                    entry.addProperty("isDirectory", java.nio.file.Files.isDirectory(p));
+                    if (java.nio.file.Files.isRegularFile(p)) {
+                        try {
+                            entry.addProperty("size", java.nio.file.Files.size(p));
+                        } catch (IOException ignored) {
+                            // Size unavailable — omit
+                        }
+                    }
+                    entries.add(entry);
+                });
+        }
+
+        com.google.gson.JsonObject result = new com.google.gson.JsonObject();
+        result.addProperty("path", path.isEmpty() ? "." : path);
+        result.add("entries", entries);
+        sendJson(exchange, GSON.toJson(result));
+    }
+
+    private static boolean isExcludedDir(java.nio.file.Path p) {
+        if (!java.nio.file.Files.isDirectory(p)) return false;
+        String name = p.getFileName().toString();
+        return "node_modules".equals(name) || "build".equals(name) || "out".equals(name)
+            || ".gradle".equals(name) || ".git".equals(name) || ".idea".equals(name)
+            || "dist".equals(name) || "__pycache__".equals(name) || "target".equals(name);
+    }
+
     private void broadcast(String json) {
         for (SseClient c : sseClients) {
             if (!c.offer(json)) {
                 LOG.info("SSE event dropped for a client — queue full (capacity 300). " +
                     "PWA may show stale or incomplete content.");
             }
+        }
+    }
+
+    private void handlePlan(HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set(HDR_ACCESS_CONTROL_ORIGIN, "*");
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            exchange.close();
+            return;
+        }
+        try {
+            ActiveAgentManager manager = ActiveAgentManager.getInstance(project);
+            java.nio.file.Path sessionDir = manager.getClient().getSessionDirectory();
+            if (sessionDir == null) {
+                sendJson(exchange, "{\"content\":null}");
+                return;
+            }
+            java.nio.file.Path planFile = sessionDir.resolve("plan.md");
+            if (!java.nio.file.Files.isRegularFile(planFile)) {
+                sendJson(exchange, "{\"content\":null}");
+                return;
+            }
+            String content = java.nio.file.Files.readString(planFile, java.nio.charset.StandardCharsets.UTF_8);
+            com.google.gson.JsonObject json = new com.google.gson.JsonObject();
+            json.addProperty("content", content);
+            sendJson(exchange, GSON.toJson(json));
+        } catch (Exception e) {
+            LOG.warn("handlePlan error", e);
+            sendJson(exchange, "{\"content\":null}");
+        }
+    }
+
+    private void handleSessionStats(HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set(HDR_ACCESS_CONTROL_ORIGIN, "*");
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            exchange.close();
+            return;
+        }
+        com.google.gson.JsonObject json = new com.google.gson.JsonObject();
+        json.addProperty("isRunning", agentRunning);
+        json.addProperty("model", currentModel);
+        json.addProperty("connected", connected);
+        sendJson(exchange, GSON.toJson(json));
+    }
+
+    private void handleReviewItems(HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set(HDR_ACCESS_CONTROL_ORIGIN, "*");
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            exchange.close();
+            return;
+        }
+        try {
+            com.github.catatafishen.agentbridge.psi.review.AgentEditSession editSession =
+                com.github.catatafishen.agentbridge.psi.review.AgentEditSession.getInstance(project);
+            java.util.List<com.github.catatafishen.agentbridge.psi.review.ReviewItem> items = editSession.getReviewItems();
+            com.google.gson.JsonArray arr = new com.google.gson.JsonArray();
+            for (com.github.catatafishen.agentbridge.psi.review.ReviewItem item : items) {
+                com.google.gson.JsonObject obj = new com.google.gson.JsonObject();
+                obj.addProperty("path", item.relativePath());
+                obj.addProperty("status", item.status().name());
+                obj.addProperty("approved", item.approved());
+                obj.addProperty("linesAdded", item.linesAdded());
+                obj.addProperty("linesRemoved", item.linesRemoved());
+                arr.add(obj);
+            }
+            com.google.gson.JsonObject json = new com.google.gson.JsonObject();
+            json.add("items", arr);
+            sendJson(exchange, GSON.toJson(json));
+        } catch (Exception e) {
+            LOG.warn("handleReviewItems error", e);
+            sendJson(exchange, "{\"items\":[]}");
         }
     }
 
@@ -1566,7 +1793,7 @@ public final class ChatWebServer implements Disposable {
 
     private void sendJson(HttpExchange exchange, String json) throws IOException {
         byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set(HDR_CONTENT_TYPE, "application/json; charset=utf-8");
+        exchange.getResponseHeaders().set(HDR_CONTENT_TYPE, JSON_CONTENT_TYPE);
         exchange.getResponseHeaders().set(HDR_ACCESS_CONTROL_ORIGIN, "*");
         exchange.sendResponseHeaders(200, bytes.length);
         exchange.getResponseBody().write(bytes);
