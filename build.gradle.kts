@@ -113,7 +113,12 @@ sonar {
         ).mapIndexed { i, path -> IgnoredIssue("s6541_$i", "java:S6541", path) } + listOf(
             IgnoredIssue("ts_s3776_render", "typescript:S3776", "**/chat-ui/src/renderMarkdown.ts"),
             IgnoredIssue("ts_s3776_batch", "typescript:S3776", "**/chat-ui/src/BatchRenderer.ts"),
-            IgnoredIssue("ts_s2004_app", "typescript:S2004", "**/chat-ui/src/web-app.ts")
+            IgnoredIssue("ts_s2004_app", "typescript:S2004", "**/chat-ui/src/web-app.ts"),
+            // typescript:S7785 — top-level await is unsupported in IIFE bundles, and
+            // web-app.ts is intentionally bundled as IIFE (see chat-ui/build.js) so it
+            // can be loaded via a plain <script> tag without a module loader. The
+            // existing .then()/.catch() chains are the only option in that format.
+            IgnoredIssue("ts_s7785_app", "typescript:S7785", "**/chat-ui/src/web-app.ts")
         ) + listOf(
             // java:S3077 (volatile non-primitive). All these fields hold either an immutable
             // value (String, Path) or a snapshot reference that is only ever wholesale
