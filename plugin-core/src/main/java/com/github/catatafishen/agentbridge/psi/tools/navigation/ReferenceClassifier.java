@@ -55,9 +55,10 @@ final class ReferenceClassifier {
 
     /**
      * Maps a PSI class simple name to a usage type label, or returns null if unrecognized.
+     * Package-private for testability — the classification logic is the core of this utility.
      */
     @SuppressWarnings("java:S1168") // null return is intentional — signals "no match, continue walking"
-    private static @Nullable String classifyByClassName(@NotNull String cls) {
+    static @Nullable String classifyByClassName(@NotNull String cls) {
         if (containsAny(cls, "ImportStatement", "ImportDirective", "ImportDeclaration", "Import")) {
             return USAGE_IMPORT;
         }

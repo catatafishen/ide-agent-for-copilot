@@ -3,12 +3,14 @@ package com.github.catatafishen.agentbridge.psi.tools.navigation;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
- * Unit tests for the pure formatting methods in {@link ReferenceClassifier}.
- * Classification logic (classifyUsage) requires PSI elements and is covered by integration tests.
+ * Unit tests for {@link ReferenceClassifier}.
  */
 class ReferenceClassifierTest {
 
@@ -50,6 +52,90 @@ class ReferenceClassifierTest {
             assertEquals("NEW", ReferenceClassifier.USAGE_NEW);
             assertEquals("COMMENT", ReferenceClassifier.USAGE_COMMENT);
             assertEquals("REF", ReferenceClassifier.USAGE_REFERENCE);
+        }
+    }
+
+    @Nested
+    @DisplayName("classifyByClassName")
+    class ClassifyByClassName {
+
+        @ParameterizedTest
+        @ValueSource(strings = {"PsiImportStatement", "KtImportDirective", "ES6ImportDeclaration", "PsiImport"})
+        @DisplayName("import-related class names → IMPORT")
+        void importsClassified(String className) {
+            assertEquals(ReferenceClassifier.USAGE_IMPORT,
+                ReferenceClassifier.classifyByClassName(className));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"PsiMethodCallExpression", "KtCallExpression", "JSFunctionCall"})
+        @DisplayName("call-related class names → CALL")
+        void callsClassified(String className) {
+            assertEquals(ReferenceClassifier.USAGE_METHOD_CALL,
+                ReferenceClassifier.classifyByClassName(className));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"PsiNewExpression", "KtConstructorCall", "PsiObjectCreation"})
+        @DisplayName("new/constructor class names → NEW")
+        void newExpressionClassified(String className) {
+            assertEquals(ReferenceClassifier.USAGE_NEW,
+                ReferenceClassifier.classifyByClassName(className));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"PsiAnnotation", "KtAnnotationEntry"})
+        @DisplayName("annotation class names → ANNOTATION")
+        void annotationClassified(String className) {
+            assertEquals(ReferenceClassifier.USAGE_ANNOTATION,
+                ReferenceClassifier.classifyByClassName(className));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"PsiReferenceExtendsListImpl", "ExtendsClause", "KtSuperTypeList"})
+        @DisplayName("extends class names → EXTENDS")
+        void extendsClassified(String className) {
+            assertEquals(ReferenceClassifier.USAGE_EXTENDS,
+                ReferenceClassifier.classifyByClassName(className));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"PsiReferenceImplementsList", "ImplementsClause"})
+        @DisplayName("implements class names → IMPLEMENTS")
+        void implementsClassified(String className) {
+            assertEquals(ReferenceClassifier.USAGE_IMPLEMENTS,
+                ReferenceClassifier.classifyByClassName(className));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"PsiComment", "PsiDocComment", "KDoc"})
+        @DisplayName("comment class names → COMMENT")
+        void commentClassified(String className) {
+            assertEquals(ReferenceClassifier.USAGE_COMMENT,
+                ReferenceClassifier.classifyByClassName(className));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"PsiTypeElement", "KtTypeReference", "KtUserType", "JSTypeReference"})
+        @DisplayName("type reference class names → TYPE_REF")
+        void typeRefClassified(String className) {
+            assertEquals(ReferenceClassifier.USAGE_TYPE_REF,
+                ReferenceClassifier.classifyByClassName(className));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"PsiFieldAccess", "KtQualifiedAccess"})
+        @DisplayName("field access class names → FIELD_ACCESS")
+        void fieldAccessClassified(String className) {
+            assertEquals(ReferenceClassifier.USAGE_FIELD_ACCESS,
+                ReferenceClassifier.classifyByClassName(className));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"PsiReferenceExpression", "PsiWhiteSpace", "SomeRandomClass"})
+        @DisplayName("unrecognized class names → null")
+        void unrecognizedReturnsNull(String className) {
+            assertNull(ReferenceClassifier.classifyByClassName(className));
         }
     }
 }
