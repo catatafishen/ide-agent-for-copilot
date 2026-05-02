@@ -57,6 +57,14 @@ class ChatWebServerConfigurable(private val project: Project) :
                 .bindIntValue({ settings.port }, { settings.port = it })
         }
         row {
+            checkBox("Static port (fail if busy instead of auto-allocating)")
+                .comment(
+                    "When enabled, the server will not try alternative ports if the configured " +
+                        "port is already in use — it will fail with an error instead."
+                )
+                .bindSelected({ settings.isStaticPort }, { settings.isStaticPort = it })
+        }
+        row {
             checkBox("Use HTTPS (generates self-signed CA cert for device trust)")
                 .bindSelected({ settings.isHttpsEnabled }, { settings.isHttpsEnabled = it })
         }
