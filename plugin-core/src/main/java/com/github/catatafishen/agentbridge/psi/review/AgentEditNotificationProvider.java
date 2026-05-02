@@ -40,50 +40,59 @@ public final class AgentEditNotificationProvider implements EditorNotificationPr
         String before = session.getSnapshot(file);
         if (before == null) return null;
 
-        return fileEditor -> buildBanner(project, file, fileEditor, before);
+        ApprovalState state = session.getApprovalState(file);
+        return fileEditor -> buildBanner(project, file, fileEditor, before, state);
     }
 
     private @NotNull EditorNotificationPanel buildBanner(@NotNull Project project,
                                                          @NotNull VirtualFile file,
                                                          @NotNull FileEditor fileEditor,
-                                                         @NotNull String before) {
+                                                         @NotNull String before,
+                                                         @NotNull ApprovalState approvalState) {
         EditorNotificationPanel panel = new EditorNotificationPanel(fileEditor,
-            EditorNotificationPanel.Status.Info);
-        panel.setText(buildStatusText(project, file));
+            approvalState == ApprovalState.APPROVED
+                ? EditorNotificationPanel.Status.Info
+                : EditorNotificationPanel.Status.Warning);
+        panel.setText(buildStatusText(project, file, approvalState));
 
         panel.createActionLabel("Show diff", () -> showDiff(project, file, before));
 
-        panel.createActionLabel("Accept", () -> {
-            AgentEditSession.getInstance(project).acceptFile(file.getPath());
-            EditorNotifications.getInstance(project).updateNotifications(file);
-        });
+        if (approvalState == ApprovalState.PENDING) {
+            panel.createActionLabel("Accept", () -> {
+                AgentEditSession.getInstance(project).acceptFile(file.getPath());
+                EditorNotifications.getInstance(project).updateNotifications(file);
+            });
+        }
 
         panel.createActionLabel("Previous", () -> navigateFromBanner(project, file, fileEditor, false));
         panel.createActionLabel("Next", () -> navigateFromBanner(project, file, fileEditor, true));
 
-        panel.createActionLabel("Revert…", () -> {
-            String relativePath = toRelativePath(project, file);
-            AgentEditSession s = AgentEditSession.getInstance(project);
-            RevertReasonDialog dialog = new RevertReasonDialog(project, file, relativePath, s.isGateActive());
-            if (!dialog.showAndGet()) return;
-            AgentEditSession.RevertGateAction gateAction = switch (dialog.getResult()) {
-                case CONTINUE_REVIEWING -> AgentEditSession.RevertGateAction.CONTINUE_REVIEWING;
-                case SEND_NOW -> AgentEditSession.RevertGateAction.SEND_NOW;
-                default -> AgentEditSession.RevertGateAction.DEFAULT;
-            };
-            s.revertFile(file.getPath(), dialog.getReason(), gateAction);
-            EditorNotifications.getInstance(project).updateNotifications(file);
-        });
+        if (approvalState == ApprovalState.PENDING) {
+            panel.createActionLabel("Revert…", () -> {
+                String relativePath = toRelativePath(project, file);
+                AgentEditSession s = AgentEditSession.getInstance(project);
+                RevertReasonDialog dialog = new RevertReasonDialog(project, file, relativePath, s.isGateActive());
+                if (!dialog.showAndGet()) return;
+                AgentEditSession.RevertGateAction gateAction = switch (dialog.getResult()) {
+                    case CONTINUE_REVIEWING -> AgentEditSession.RevertGateAction.CONTINUE_REVIEWING;
+                    case SEND_NOW -> AgentEditSession.RevertGateAction.SEND_NOW;
+                    default -> AgentEditSession.RevertGateAction.DEFAULT;
+                };
+                s.revertFile(file.getPath(), dialog.getReason(), gateAction);
+                EditorNotifications.getInstance(project).updateNotifications(file);
+            });
+        }
 
         return panel;
     }
 
     /**
-     * Builds the banner text with file and change counters.
-     * Example: "Edited by agent: File 3/7 · 5 changes"
+     * Builds the banner text with file and change counters plus approval state.
+     * Example: "Edited by agent: File 3/7 · 5 changes" or "✓ Accepted: File 3/7 · 5 changes"
      */
     private static @NotNull String buildStatusText(@NotNull Project project,
-                                                   @NotNull VirtualFile file) {
+                                                   @NotNull VirtualFile file,
+                                                   @NotNull ApprovalState approvalState) {
         AgentEditSession session = AgentEditSession.getInstance(project);
         List<ReviewItem> items = session.getReviewItems();
 
@@ -100,11 +109,13 @@ public final class AgentEditNotificationProvider implements EditorNotificationPr
         List<ChangeRange> ranges = session.computeRanges(file);
         int changeCount = ranges.size();
 
-        return formatBannerText(fileIndex, fileTotal, changeCount);
+        String prefix = approvalState == ApprovalState.APPROVED ? "✓ Accepted" : "Edited by agent";
+        return formatBannerText(prefix, fileIndex, fileTotal, changeCount);
     }
 
-    static @NotNull String formatBannerText(int fileIndex, int fileTotal, int changeCount) {
-        StringBuilder sb = new StringBuilder("Edited by agent: ");
+    static @NotNull String formatBannerText(@NotNull String prefix,
+                                            int fileIndex, int fileTotal, int changeCount) {
+        StringBuilder sb = new StringBuilder(prefix).append(": ");
         if (fileTotal > 0) {
             sb.append("File ").append(Math.max(fileIndex, 1)).append('/').append(fileTotal);
         }

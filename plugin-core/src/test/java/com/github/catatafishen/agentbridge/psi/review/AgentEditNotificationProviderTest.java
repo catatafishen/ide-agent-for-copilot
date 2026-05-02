@@ -8,8 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AgentEditNotificationProviderTest {
 
     @Test
-    void bannerTextLeadsWithEditedByAgent() {
-        String msg = AgentEditNotificationProvider.formatBannerText(1, 3, 2);
+    void bannerTextShowsEditedByAgentWhenPending() {
+        String msg = AgentEditNotificationProvider.formatBannerText("Edited by agent", 1, 3, 2);
 
         assertTrue(msg.startsWith("Edited by agent:"),
             "Banner should lead with the agent-edit state: " + msg);
@@ -20,8 +20,18 @@ class AgentEditNotificationProviderTest {
     }
 
     @Test
+    void bannerTextShowsAcceptedWhenApproved() {
+        String msg = AgentEditNotificationProvider.formatBannerText("✓ Accepted", 1, 3, 2);
+
+        assertTrue(msg.startsWith("✓ Accepted:"),
+            "Banner should show accepted state: " + msg);
+        assertTrue(msg.contains("File 1/3"),
+            "Banner should still include the file counter: " + msg);
+    }
+
+    @Test
     void bannerTextFallsBackWhenCountersAreEmpty() {
-        String msg = AgentEditNotificationProvider.formatBannerText(0, 0, 0);
+        String msg = AgentEditNotificationProvider.formatBannerText("Edited by agent", 0, 0, 0);
 
         assertTrue(msg.contains("No outstanding changes"),
             "Banner should remain readable when counters are unavailable: " + msg);
@@ -30,8 +40,8 @@ class AgentEditNotificationProviderTest {
     @Test
     void bannerTextIsDeterministic() {
         assertEquals(
-            AgentEditNotificationProvider.formatBannerText(2, 5, 4),
-            AgentEditNotificationProvider.formatBannerText(2, 5, 4)
+            AgentEditNotificationProvider.formatBannerText("Edited by agent", 2, 5, 4),
+            AgentEditNotificationProvider.formatBannerText("Edited by agent", 2, 5, 4)
         );
     }
 }
