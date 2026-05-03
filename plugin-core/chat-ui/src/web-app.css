@@ -1157,6 +1157,8 @@ file-nav {
 }
 
 .tv-pending {
+    /* no special styling — present for JS class-toggling */
+    display: block;
 }
 
 .tv-li {
@@ -1331,8 +1333,8 @@ file-nav {
 }
 
 .tv-btn-primary {
-    background: var(--blue, #388bfd);
-    border-color: var(--blue, #388bfd);
+    background: var(--blue, #2563eb);
+    border-color: var(--blue, #2563eb);
     color: #fff;
 }
 
@@ -1546,6 +1548,8 @@ file-nav {
 }
 
 .sv-val {
+    /* inherits default text color — present for JS class-toggling */
+    display: inline;
 }
 
 .sv-offline {
