@@ -102,5 +102,7 @@ integration-tests/bin
 mcp-server/bin
 .junie/
 
-# Plugin runtime database (tool usage stats, machine-specific)
-.agentbridge/
+# Plugin runtime data (tool stats, models, memory — machine-specific)
+.agentbridge/*
+# But version-control the hook configs and scripts (project policy)
+!.agentbridge/hooks/
