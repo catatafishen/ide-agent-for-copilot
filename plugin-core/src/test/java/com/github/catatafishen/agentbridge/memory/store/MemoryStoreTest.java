@@ -30,11 +30,10 @@ class MemoryStoreTest {
     Path tempDir;
 
     private MemoryStore store;
-    private WriteAheadLog wal;
 
     @BeforeEach
     void setUp() throws IOException {
-        wal = new WriteAheadLog(tempDir.resolve("wal"));
+        WriteAheadLog wal = new WriteAheadLog(tempDir.resolve("wal"));
         wal.initialize();
         store = new MemoryStore(tempDir.resolve("lucene-index"), wal);
         store.initialize();
@@ -78,7 +77,7 @@ class MemoryStoreTest {
     }
 
     @Test
-    void duplicateDetectionSkipsIdenticalEmbedding() throws IOException {
+    void addDrawerWithSameIdOverwritesPreviousEntry() throws IOException {
         float[] embedding = new float[384];
         for (int i = 0; i < 384; i++) embedding[i] = 0.5f;
 
@@ -89,21 +88,25 @@ class MemoryStoreTest {
             .build();
         store.addDrawer(doc1, embedding);
 
-        // Same embedding should be detected as duplicate
+        // Same ID → upsert: overwrites the existing entry
         DrawerDocument doc2 = DrawerDocument.builder()
-            .id("dup-2")
+            .id("dup-1")
             .wing("proj")
-            .content("Second document")
+            .content("Updated document")
             .build();
         String result = store.addDrawer(doc2, embedding);
-        assertNull(result, "Expected duplicate to be skipped");
-        assertEquals(1, store.getDrawerCount());
-    }
+        assertNotNull(result, "Expected upsert to return drawer ID");
+        assertEquals(1, store.getDrawerCount(), "Upsert on same ID should not increase count");
 
-    @Test
-    void isDuplicateReturnsFalseForEmptyIndex() throws IOException {
-        float[] embedding = randomEmbedding();
-        assertFalse(store.isDuplicate(embedding));
+        // Different ID with identical embedding → both stored (no KNN dedup)
+        DrawerDocument doc3 = DrawerDocument.builder()
+            .id("dup-2")
+            .wing("proj")
+            .content("Second document with same embedding")
+            .build();
+        String result2 = store.addDrawer(doc3, embedding);
+        assertNotNull(result2);
+        assertEquals(2, store.getDrawerCount(), "Different IDs should each be stored");
     }
 
     @Test
@@ -156,7 +159,7 @@ class MemoryStoreTest {
         store.addDrawer(recent, randomEmbedding());
 
         List<DrawerDocument> top = store.getTopDrawers("proj", 10);
-        assertEquals("recent", top.get(0).id());
+        assertEquals("recent", top.getFirst().id());
         assertEquals("old", top.get(1).id());
     }
 
@@ -169,7 +172,7 @@ class MemoryStoreTest {
         MemoryQuery q = MemoryQuery.filter().wing("proj").room("technical").build();
         List<DrawerDocument.SearchResult> results = store.search(q, null);
         assertEquals(1, results.size());
-        assertEquals("d1", results.get(0).drawer().id());
+        assertEquals("d1", results.getFirst().drawer().id());
     }
 
     @Test
@@ -228,7 +231,7 @@ class MemoryStoreTest {
         MemoryQuery q = MemoryQuery.filter().wing("proj").room("codebase").build();
         List<DrawerDocument.SearchResult> results = store.search(q, null);
         assertEquals(1, results.size());
-        DrawerDocument retrieved = results.get(0).drawer();
+        DrawerDocument retrieved = results.getFirst().drawer();
         assertEquals("3", retrieved.sourceTurnIndex());
         assertEquals("abc1234,def5678", retrieved.sourceCommits());
     }
@@ -246,7 +249,7 @@ class MemoryStoreTest {
         MemoryQuery q = MemoryQuery.filter().wing("proj").room("general").build();
         List<DrawerDocument.SearchResult> results = store.search(q, null);
         assertEquals(1, results.size());
-        DrawerDocument retrieved = results.get(0).drawer();
+        DrawerDocument retrieved = results.getFirst().drawer();
         assertEquals("", retrieved.sourceTurnIndex());
         assertEquals("", retrieved.sourceCommits());
     }
@@ -276,7 +279,7 @@ class MemoryStoreTest {
 
         List<DrawerDocument> found = store.findByEvidence("com.example.AuthService");
         assertEquals(1, found.size());
-        assertEquals("ev-1", found.get(0).id());
+        assertEquals("ev-1", found.getFirst().id());
     }
 
     @Test
@@ -293,7 +296,7 @@ class MemoryStoreTest {
         // Partial substring "UserService.java" should match
         List<DrawerDocument> found = store.findByEvidence("UserService.java");
         assertEquals(1, found.size());
-        assertEquals("ev-2", found.get(0).id());
+        assertEquals("ev-2", found.getFirst().id());
     }
 
     @Test
@@ -332,8 +335,8 @@ class MemoryStoreTest {
 
         List<DrawerDocument> found = store.findByEvidence("com.example.Foo");
         assertEquals(1, found.size());
-        assertEquals(evidenceJson, found.get(0).evidence());
-        assertEquals(DrawerDocument.STATE_VERIFIED, found.get(0).verificationState());
+        assertEquals(evidenceJson, found.getFirst().evidence());
+        assertEquals(DrawerDocument.STATE_VERIFIED, found.getFirst().verificationState());
     }
 
     // ── updateEvidenceRef ─────────────────────────────────────────────────
@@ -355,8 +358,8 @@ class MemoryStoreTest {
         // Verify the evidence was updated
         List<DrawerDocument> found = store.findByEvidence("com.example.NewService");
         assertEquals(1, found.size());
-        assertTrue(found.get(0).evidence().contains("com.example.NewService"));
-        assertFalse(found.get(0).evidence().contains("com.example.OldService"));
+        assertTrue(found.getFirst().evidence().contains("com.example.NewService"));
+        assertFalse(found.getFirst().evidence().contains("com.example.OldService"));
     }
 
     @Test
@@ -390,7 +393,7 @@ class MemoryStoreTest {
 
         List<DrawerDocument> found = store.findByEvidence("com.example.Renamed");
         assertEquals(1, found.size());
-        assertEquals(DrawerDocument.STATE_STALE, found.get(0).verificationState());
+        assertEquals(DrawerDocument.STATE_STALE, found.getFirst().verificationState());
     }
 
     @Test
@@ -467,7 +470,7 @@ class MemoryStoreTest {
 
         List<DrawerDocument> found = store.findByEvidence("com.example.Baz");
         assertEquals(1, found.size());
-        assertNotNull(found.get(0).lastVerifiedAt());
+        assertNotNull(found.getFirst().lastVerifiedAt());
     }
 
     /**
