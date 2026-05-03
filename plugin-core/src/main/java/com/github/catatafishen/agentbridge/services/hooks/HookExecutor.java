@@ -199,6 +199,19 @@ public final class HookExecutor {
         };
     }
 
+    private static final String DEFAULT_SHELL = "/bin/sh";
+
+    /**
+     * Build the command list used to invoke the hook script.
+     * <ul>
+     *   <li>PowerShell scripts ({@code .ps1}) are invoked via {@code powershell}.</li>
+     *   <li>Other scripts are invoked with the interpreter declared in their shebang
+     *       line (e.g. {@code #!/usr/bin/env bash} → {@code bash scriptPath}).
+     *       If the shebang uses {@code /usr/bin/env}, the resolver token after {@code env}
+     *       is extracted so that e.g. {@code #!/usr/bin/env python3} works correctly.</li>
+     *   <li>Scripts with no readable shebang fall back to {@code /bin/sh}.</li>
+     * </ul>
+     */
     private static @NotNull List<String> buildCommand(@NotNull Path scriptPath) {
         List<String> cmd = new ArrayList<>();
         String fileName = scriptPath.getFileName().toString().toLowerCase();
@@ -208,10 +221,31 @@ public final class HookExecutor {
             cmd.add("Bypass");
             cmd.add("-File");
         } else {
-            cmd.add("/bin/sh");
+            cmd.add(resolveInterpreter(scriptPath));
         }
         cmd.add(scriptPath.toAbsolutePath().toString());
         return cmd;
+    }
+
+    /**
+     * Extract the interpreter from the script's shebang line.
+     * Returns {@code /bin/sh} as a safe fallback when the shebang is absent or unreadable.
+     */
+    private static @NotNull String resolveInterpreter(@NotNull Path scriptPath) {
+        try (java.io.BufferedReader reader = java.nio.file.Files.newBufferedReader(scriptPath)) {
+            String firstLine = reader.readLine();
+            if (firstLine == null || !firstLine.startsWith("#!")) return DEFAULT_SHELL;
+            String shebang = firstLine.substring(2).trim();
+            // /usr/bin/env python3  →  python3
+            if (shebang.startsWith("/usr/bin/env ")) {
+                String[] parts = shebang.substring("/usr/bin/env ".length()).trim().split("\\s+");
+                return parts[0].isEmpty() ? DEFAULT_SHELL : parts[0];
+            }
+            // /bin/bash  or  /usr/bin/python3  →  use as-is
+            return shebang.split("\\s+")[0];
+        } catch (java.io.IOException e) {
+            return DEFAULT_SHELL;
+        }
     }
 
     private static CompletableFuture<String> readAsync(InputStream stream) {
