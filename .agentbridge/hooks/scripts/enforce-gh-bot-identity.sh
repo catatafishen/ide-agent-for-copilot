@@ -35,7 +35,7 @@ case "$lcmd" in
     "gh release create"*) needs_bot=true ;;
     "gh api "*)
         case "$lcmd" in
-            *"-x post"*|*"-x patch"*|*"-x put"*|*"-x delete"*|*"-method post"*|*"-method patch"*|*"-method put"*|*"-method delete"*)
+            *"-x post"*|*"-x patch"*|*"-x put"*|*"-x delete"*|*"-method post"*|*"-method patch"*|*"-method put"*|*"-method delete"*|*"graphql"*)
                 needs_bot=true ;;
         esac ;;
 esac
