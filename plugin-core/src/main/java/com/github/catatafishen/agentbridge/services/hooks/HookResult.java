@@ -34,16 +34,22 @@ public sealed interface HookResult {
     record PreHookFailure(@NotNull String error) implements HookResult {
     }
 
-    /**
-     * Post-hook or failure-hook result: replace or append to tool output.
-     */
-    record OutputModification(@Nullable String replacedOutput, @Nullable String appendedText) implements HookResult {
+    record OutputModification(@Nullable String replacedOutput,
+                              @Nullable String appendedText,
+                              @Nullable Boolean stateOverride) implements HookResult {
 
         /**
          * True if this result replaces the entire output (as opposed to appending).
          */
         public boolean isReplacement() {
             return replacedOutput != null;
+        }
+
+        /**
+         * Convenience constructor for output modifications without state change.
+         */
+        public OutputModification(@Nullable String replacedOutput, @Nullable String appendedText) {
+            this(replacedOutput, appendedText, null);
         }
     }
 }

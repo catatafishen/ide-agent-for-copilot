@@ -174,17 +174,33 @@ public final class HookExecutor {
     }
 
     private static @NotNull HookResult parseOutputResult(@NotNull JsonObject obj, @NotNull String rawStdout) {
+        Boolean stateOverride = parseStateOverride(obj);
+
         if (obj.has("output")) {
             JsonElement output = obj.get("output");
             String text = output.isJsonNull() ? "" : output.getAsString();
-            return new HookResult.OutputModification(text, null);
+            return new HookResult.OutputModification(text, null, stateOverride);
         }
         if (obj.has("append")) {
             JsonElement append = obj.get("append");
             String text = append.isJsonNull() ? null : append.getAsString();
-            return new HookResult.OutputModification(null, text);
+            return new HookResult.OutputModification(null, text, stateOverride);
         }
-        return new HookResult.OutputModification(stripTrailingLineBreaks(rawStdout), null);
+        return new HookResult.OutputModification(stripTrailingLineBreaks(rawStdout), null, stateOverride);
+    }
+
+    /**
+     * Parses the optional "state" field from hook output JSON.
+     * Returns {@code true} for "success", {@code false} for "error", or {@code null} if absent.
+     */
+    private static @Nullable Boolean parseStateOverride(@NotNull JsonObject obj) {
+        if (!obj.has("state")) return null;
+        String state = obj.get("state").getAsString();
+        return switch (state.toLowerCase()) {
+            case "success" -> true;
+            case "error" -> false;
+            default -> null;
+        };
     }
 
     private static @NotNull List<String> buildCommand(@NotNull Path scriptPath) {

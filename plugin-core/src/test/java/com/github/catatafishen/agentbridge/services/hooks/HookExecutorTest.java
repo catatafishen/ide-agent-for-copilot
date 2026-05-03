@@ -9,6 +9,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HookExecutorTest {
@@ -120,6 +121,44 @@ class HookExecutorTest {
         var mod = (HookResult.OutputModification) result;
         assertTrue(mod.isReplacement());
         assertEquals("{\"message\":\"ignored\"}", mod.replacedOutput());
+    }
+
+    @Test
+    void parseResult_failure_stateOverrideSuccess_resolvesError() {
+        var result = HookExecutor.parseResult(HookTrigger.FAILURE, "{\"output\":\"Fixed output\",\"state\":\"success\"}");
+        assertInstanceOf(HookResult.OutputModification.class, result);
+        var mod = (HookResult.OutputModification) result;
+        assertTrue(mod.isReplacement());
+        assertEquals("Fixed output", mod.replacedOutput());
+        assertEquals(Boolean.TRUE, mod.stateOverride());
+    }
+
+    @Test
+    void parseResult_success_stateOverrideError_convertsToError() {
+        var result = HookExecutor.parseResult(HookTrigger.SUCCESS, "{\"output\":\"Flagged output\",\"state\":\"error\"}");
+        assertInstanceOf(HookResult.OutputModification.class, result);
+        var mod = (HookResult.OutputModification) result;
+        assertTrue(mod.isReplacement());
+        assertEquals("Flagged output", mod.replacedOutput());
+        assertEquals(Boolean.FALSE, mod.stateOverride());
+    }
+
+    @Test
+    void parseResult_success_noStateField_noOverride() {
+        var result = HookExecutor.parseResult(HookTrigger.SUCCESS, "{\"output\":\"normal\"}");
+        assertInstanceOf(HookResult.OutputModification.class, result);
+        var mod = (HookResult.OutputModification) result;
+        assertNull(mod.stateOverride());
+    }
+
+    @Test
+    void parseResult_failure_appendWithStateOverride() {
+        var result = HookExecutor.parseResult(HookTrigger.FAILURE, "{\"append\":\"\\nRetried and succeeded\",\"state\":\"success\"}");
+        assertInstanceOf(HookResult.OutputModification.class, result);
+        var mod = (HookResult.OutputModification) result;
+        assertFalse(mod.isReplacement());
+        assertEquals("\nRetried and succeeded", mod.appendedText());
+        assertEquals(Boolean.TRUE, mod.stateOverride());
     }
 
     private static void assertInstanceOfNoOp(HookResult result) {
