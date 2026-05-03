@@ -167,7 +167,11 @@ final class ToolOutputHookRunner {
     }
 
     private static String stripTrailingLineBreaks(String text) {
-        return text.replaceFirst("[\\r\\n]+$", "");
+        int end = text.length();
+        while (end > 0 && (text.charAt(end - 1) == '\r' || text.charAt(end - 1) == '\n')) {
+            end--;
+        }
+        return text.substring(0, end);
     }
 
     record HookPayload(@NotNull String toolName,
