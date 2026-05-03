@@ -27,7 +27,7 @@
             <ToolOptions>
               <option name="outputTemplate"
                       value="Always check the open PRs after pushing. There might be failing checks or new comments on your work. If a PR is approved by the repo owner, then you can merge. Also check new activity on issues. Some feedback might be available there as well. If CI is running, wait for it and check older PRs in the mean-time. Your old work might have conflicts etc that needs to be fixed."/>
-              <option name="outputHookCommand" value="hooks/git-push-tip.sh"/>
+              <option name="outputHookCommand" value="hooks/git-push-pr-tip/git-push-tip.sh"/>
             </ToolOptions>
           </value>
         </entry>
