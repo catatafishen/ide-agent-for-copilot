@@ -18,7 +18,6 @@ import org.jetbrains.annotations.Nullable;
 public final class RunCommandTool extends InfrastructureTool {
 
     private static final String PARAM_COMMAND = "command";
-    private static final String JSON_PARAMETERS = "parameters";
     private static final String PARAM_OFFSET = "offset";
     private static final String PARAM_TIMEOUT = "timeout";
     private static final String PARAM_MAX_CHARS = "max_chars";
@@ -80,38 +79,6 @@ public final class RunCommandTool extends InfrastructureTool {
     }
 
     @Override
-    public @Nullable String detectPermissionAbuse(@Nullable Object toolCall) {
-        if (!(toolCall instanceof com.google.gson.JsonObject jsonToolCall)) return null;
-        String command = extractCommandFromToolCall(jsonToolCall);
-        if (command == null) return null;
-        String abuse = ToolUtils.detectCommandAbuseType(command);
-        if ("grep".equals(abuse) && ToolUtils.grepTargetsOnlyOutsideSourceRoots(project, command)) {
-            return null;
-        }
-        return abuse;
-    }
-
-    private static @Nullable String extractCommandFromToolCall(com.google.gson.JsonObject toolCall) {
-        // Check direct parameters
-        if (toolCall.has(JSON_PARAMETERS) && toolCall.get(JSON_PARAMETERS).isJsonObject()) {
-            var params = toolCall.getAsJsonObject(JSON_PARAMETERS);
-            if (params.has(PARAM_COMMAND) && params.get(PARAM_COMMAND).isJsonPrimitive()) {
-                return params.get(PARAM_COMMAND).getAsString().toLowerCase().trim();
-            }
-        }
-        // Check nested input/arguments
-        for (String wrapper : new String[]{"arguments", "input"}) {
-            if (toolCall.has(wrapper) && toolCall.get(wrapper).isJsonObject()) {
-                var nested = toolCall.getAsJsonObject(wrapper);
-                if (nested.has(PARAM_COMMAND) && nested.get(PARAM_COMMAND).isJsonPrimitive()) {
-                    return nested.get(PARAM_COMMAND).getAsString().toLowerCase().trim();
-                }
-            }
-        }
-        return null;
-    }
-
-    @Override
     @SuppressWarnings("java:S112") // generic exceptions are caught at the JSON-RPC dispatch level
     public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String command = args.get(PARAM_COMMAND).getAsString();
@@ -122,7 +89,9 @@ public final class RunCommandTool extends InfrastructureTool {
         if ("grep".equals(abuseType) && ToolUtils.grepTargetsOnlyOutsideSourceRoots(project, command)) {
             abuseType = null;
         }
-        if (abuseType != null) return ToolUtils.getCommandAbuseMessage(abuseType);
+        if ("grep".equals(abuseType)) {
+            return ToolUtils.getCommandAbuseMessage("grep");
+        }
 
         EdtUtil.invokeAndWait(() ->
             com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().saveAllDocuments());
@@ -187,7 +156,7 @@ public final class RunCommandTool extends InfrastructureTool {
 
     private String getProjectJavaHome() {
         try {
-            Sdk sdk = ProjectRootManager.getInstance(project).getProjectSdk();
+            @Nullable Sdk sdk = ProjectRootManager.getInstance(project).getProjectSdk();
             if (sdk != null && sdk.getHomePath() != null) {
                 return sdk.getHomePath();
             }
