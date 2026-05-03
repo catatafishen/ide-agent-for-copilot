@@ -334,6 +334,28 @@ See the full reference in [docs/INLINE-DIFF-REVIEW.md](docs/INLINE-DIFF-REVIEW.m
 
 ---
 
+## MCP Tool Hooks
+
+Intercept any MCP tool call with shell scripts that run at four lifecycle points.
+Hooks create a closed feedback loop: they receive JSON on stdin and write JSON to stdout,
+and the MCP server uses the response to shape what the agent perceives.
+
+See [docs/MCP-TOOL-HOOKS.md](docs/MCP-TOOL-HOOKS.md) for the complete reference.
+
+- **Permission hooks** — gate tool execution with allow/deny decisions
+- **Pre hooks** — modify tool arguments before execution, or block with an error
+- **Success hooks** — transform output, append tips, or flag results as errors
+- **Failure hooks** — augment error messages, suggest fixes, or resolve errors to success
+- **State override** — success and failure hooks can flip the error state via `"state": "success"` / `"error"`
+- **Hook chaining** — multiple entries per trigger run sequentially, each seeing the previous output
+- **Identity enforcement** — built-in hook scripts prevent agents from impersonating the repository
+  owner when creating commits, PRs, issues, and comments
+- **Per-tool configuration** — one JSON file per tool in `<storage-dir>/hooks/<tool-id>.json`
+- **Async mode** — fire-and-forget hooks for notifications and logging
+- **Configurable timeout, failSilently, and env vars** per hook entry
+
+---
+
 ## Model Selection & Billing
 
 Choose the right model for the task and track usage in real time.

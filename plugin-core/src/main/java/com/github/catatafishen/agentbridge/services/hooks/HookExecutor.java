@@ -28,6 +28,9 @@ public final class HookExecutor {
     private static final Logger LOG = Logger.getInstance(HookExecutor.class);
     private static final Gson GSON = new Gson();
     private static final int MAX_HOOK_OUTPUT_CHARS = 16_000;
+    private static final String JSON_KEY_ERROR = "error";
+    private static final String STATE_ERROR = "error";
+    private static final String STATE_SUCCESS = "success";
 
     private HookExecutor() {
     }
@@ -161,8 +164,8 @@ public final class HookExecutor {
     }
 
     private static @NotNull HookResult parsePreResult(@NotNull JsonObject obj) {
-        if (obj.has("error")) {
-            JsonElement error = obj.get("error");
+        if (obj.has(JSON_KEY_ERROR)) {
+            JsonElement error = obj.get(JSON_KEY_ERROR);
             String message = error.isJsonNull() ? "" : error.getAsString();
             if (message.isBlank()) {
                 message = "Pre-hook stopped tool execution";
@@ -197,8 +200,8 @@ public final class HookExecutor {
         if (!obj.has("state")) return null;
         String state = obj.get("state").getAsString();
         return switch (state.toLowerCase()) {
-            case "success" -> true;
-            case "error" -> false;
+            case STATE_SUCCESS -> true;
+            case STATE_ERROR -> false;
             default -> null;
         };
     }
