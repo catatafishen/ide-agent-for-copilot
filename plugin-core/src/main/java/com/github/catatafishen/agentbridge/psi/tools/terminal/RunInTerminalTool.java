@@ -1,12 +1,10 @@
 package com.github.catatafishen.agentbridge.psi.tools.terminal;
 
 import com.github.catatafishen.agentbridge.psi.EdtUtil;
-import com.github.catatafishen.agentbridge.psi.ToolUtils;
 import com.github.catatafishen.agentbridge.ui.renderers.TerminalOutputRenderer;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -66,36 +64,8 @@ public final class RunInTerminalTool extends TerminalTool {
     }
 
     @Override
-    public @Nullable String detectPermissionAbuse(@Nullable Object toolCall) {
-        if (!(toolCall instanceof JsonObject jsonToolCall)) return null;
-        String command = extractCommand(jsonToolCall);
-        if (command == null) return null;
-        return ToolUtils.detectTerminalAbuseType(command);
-    }
-
-    private static @Nullable String extractCommand(@NotNull JsonObject toolCall) {
-        for (String wrapper : new String[]{"parameters", "arguments", "input"}) {
-            if (toolCall.has(wrapper) && toolCall.get(wrapper).isJsonObject()) {
-                var nested = toolCall.getAsJsonObject(wrapper);
-                if (nested.has(JSON_COMMAND) && nested.get(JSON_COMMAND).isJsonPrimitive()) {
-                    return nested.get(JSON_COMMAND).getAsString().toLowerCase().trim();
-                }
-            }
-        }
-        return null;
-    }
-
-    @Override
     public @NotNull String execute(@NotNull JsonObject args) throws Exception {
         String command = args.get(JSON_COMMAND).getAsString();
-
-        // Runtime guard: reject abuse patterns even if the pre-check was skipped
-        String abuseType = ToolUtils.detectTerminalAbuseType(command);
-        if (abuseType != null) return ToolUtils.getCommandAbuseMessage(abuseType, "run_in_terminal");
-
-        // Soft reprimand: command runs but output is prefixed with a nudge toward the better tool
-        String reprimand = ToolUtils.getTerminalReprimand(command);
-
         String tabName = args.has(JSON_TAB_NAME) ? args.get(JSON_TAB_NAME).getAsString() : null;
         boolean newTab = args.has(JSON_NEW_TAB) && args.get(JSON_NEW_TAB).getAsBoolean();
         String shell = args.has(JSON_SHELL) ? args.get(JSON_SHELL).getAsString() : null;
@@ -126,8 +96,7 @@ public final class RunInTerminalTool extends TerminalTool {
         });
 
         try {
-            String result = resultFuture.get(10, TimeUnit.SECONDS);
-            return reprimand != null ? reprimand + "\n\n" + result : result;
+            return resultFuture.get(10, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return "Terminal opened (response timed out, but command was likely sent).";
