@@ -11,6 +11,8 @@ import com.github.catatafishen.agentbridge.psi.PsiBridgeService;
 import com.github.catatafishen.agentbridge.psi.ToolError;
 import com.github.catatafishen.agentbridge.psi.tools.quality.PendingPopupService;
 import com.github.catatafishen.agentbridge.psi.tools.quality.PopupGateLogic;
+import com.github.catatafishen.agentbridge.services.hooks.HookExecutor;
+import com.github.catatafishen.agentbridge.services.hooks.HookPipeline;
 import com.github.catatafishen.agentbridge.settings.McpServerSettings;
 import com.github.catatafishen.agentbridge.settings.McpToolFilter;
 import com.google.gson.Gson;
@@ -479,6 +481,15 @@ public final class McpProtocolHandler {
         PopupGateResult gateResult = evaluatePopupGate(toolName, sessionKey, msg);
         if (gateResult.blocked != null) return gateResult.blocked;
 
+        // Permission hook: deny/allow before any execution
+        String permissionDenial = evaluatePermissionHook(toolName, arguments);
+        if (permissionDenial != null) return buildToolResult(msg, permissionDenial, true);
+
+        // Pre hook: can modify arguments or stop execution before tool execution
+        PreHookApplication preHookResult = applyPreHook(toolName, arguments);
+        if (preHookResult.blockedMessage != null) return buildToolResult(msg, preHookResult.blockedMessage, true);
+        arguments = preHookResult.arguments;
+
         LiveToolCallService liveService = LiveToolCallService.getInstance(project);
         ToolDefinition definition = ToolRegistry.getInstance(project).findById(toolName);
         String kind = definition != null ? definition.kind().value() : null;
@@ -491,6 +502,9 @@ public final class McpProtocolHandler {
         try {
             String resultText = PsiBridgeService.getInstance(project)
                 .callTool(toolName, arguments, meta.toolUseId());
+
+            long durationMs = System.currentTimeMillis() - callStartMs;
+            resultText = applyPostHook(toolName, arguments, resultText, durationMs);
             resultText = ToolOutputHookRunner.applyHook(project, toolName, arguments, resultText, settings);
             resultText = truncateIfNeeded(resultText);
             boolean isError = ToolError.isError(resultText);
@@ -505,11 +519,74 @@ public final class McpProtocolHandler {
         } catch (Exception e) {
             LOG.warn("[MCP] tool error: " + toolName, e);
             String errorMsg = ToolError.of(McpErrorCode.INTERNAL_ERROR, e.getMessage());
+            long durationMs = System.currentTimeMillis() - callStartMs;
+            errorMsg = applyFailureHook(toolName, arguments, errorMsg, durationMs);
             liveService.complete(callId, errorMsg,
                 System.currentTimeMillis() - callStartMs, false);
             return buildToolResult(msg, errorMsg, true);
         } finally {
             McpCallContext.clear();
+        }
+    }
+
+    /**
+     * Evaluates the permission hook for a tool. Returns an error message if denied, or null if allowed.
+     */
+    private @Nullable String evaluatePermissionHook(@NotNull String toolName, @NotNull JsonObject arguments) {
+        try {
+            HookPipeline.PermissionResult result = HookPipeline.runPermissionHook(project, toolName, arguments);
+            if (result instanceof HookPipeline.PermissionResult.Denied(String reason)) {
+                return ToolError.of(McpErrorCode.NOT_APPLICABLE, "Hook denied: " + reason);
+            }
+        } catch (HookExecutor.HookExecutionException e) {
+            LOG.warn("[MCP] permission hook failed for " + toolName, e);
+            return ToolError.of(McpErrorCode.INTERNAL_ERROR, e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Applies the pre-tool hook, returning possibly modified arguments or an immediate failure.
+     * On hook failure, returns original arguments and logs the error.
+     */
+    private @NotNull PreHookApplication applyPreHook(@NotNull String toolName, @NotNull JsonObject arguments) {
+        try {
+            HookPipeline.PreHookResult result = HookPipeline.runPreHook(project, toolName, arguments);
+            if (result instanceof HookPipeline.PreHookResult.Blocked(String error)) {
+                return new PreHookApplication(arguments, error);
+            }
+            if (result instanceof HookPipeline.PreHookResult.Modified(JsonObject modified)) {
+                return new PreHookApplication(modified, null);
+            }
+        } catch (HookExecutor.HookExecutionException e) {
+            LOG.warn("[MCP] pre-hook failed for " + toolName, e);
+        }
+        return new PreHookApplication(arguments, null);
+    }
+
+    /**
+     * Applies the post-tool hook, returning possibly modified output.
+     */
+    private @Nullable String applyPostHook(@NotNull String toolName, @NotNull JsonObject arguments,
+                                           @Nullable String output, long durationMs) {
+        try {
+            return HookPipeline.runPostHook(project, toolName, arguments, output, durationMs);
+        } catch (HookExecutor.HookExecutionException e) {
+            LOG.warn("[MCP] post-hook failed for " + toolName, e);
+            return output;
+        }
+    }
+
+    /**
+     * Applies the onFailure hook, returning possibly modified error message.
+     */
+    private @NotNull String applyFailureHook(@NotNull String toolName, @NotNull JsonObject arguments,
+                                             @NotNull String errorMsg, long durationMs) {
+        try {
+            return HookPipeline.runFailureHook(project, toolName, arguments, errorMsg, durationMs);
+        } catch (HookExecutor.HookExecutionException e) {
+            LOG.warn("[MCP] onFailure hook failed for " + toolName, e);
+            return errorMsg;
         }
     }
 
@@ -522,6 +599,9 @@ public final class McpProtocolHandler {
         } else {
             LOG.info("[MCP] tools/call: " + toolName);
         }
+    }
+
+    private record PreHookApplication(@NotNull JsonObject arguments, @Nullable String blockedMessage) {
     }
 
     private record PopupGateResult(String prefix, @Nullable JsonObject blocked) {
