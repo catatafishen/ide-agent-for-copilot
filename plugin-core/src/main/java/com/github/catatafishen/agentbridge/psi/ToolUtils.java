@@ -571,11 +571,13 @@ public final class ToolUtils {
 
     /**
      * Detect if a shell command is an abuse pattern that should use a dedicated IntelliJ tool.
-     * Shared between the ACP permission flow (AcpClient) and the MCP tool execution
-     * flow (RunCommandTool) to ensure consistent blocking regardless of call path.
+     * Used by RunCommandTool (test-redirect and grep-with-source-root-exemption) and
+     * RunConfigurationService (program-args abuse check).
+     * Hard-blocks for git, cat, sed, find, and compile are primarily enforced by the PERMISSION
+     * hooks in {@code .agentbridge/hooks/run_command.json}.
      *
      * @param command the shell command string (will be lowercased and trimmed)
-     * @return the abuse type ("git", "sed", "grep", "find", "test") or null if allowed
+     * @return the abuse type ("git", "cat", "sed", "grep", "find", "test", "compile") or null if allowed
      */
     public static String detectCommandAbuseType(String command) {
         String cmd = command.toLowerCase().trim();
@@ -844,73 +846,6 @@ public final class ToolUtils {
             if (cmd.equals(runner) || cmd.startsWith(runner + " ")) return true;
         }
         return false;
-    }
-
-    /**
-     * Detects hard-block abuse patterns for {@code run_in_terminal}.
-     * Only blocks commands that cause IDE state desync (git, sed).
-     * For commands with better MCP alternatives (grep, cat, find), use
-     * {@link #getTerminalReprimand(String)} to append a warning instead.
-     */
-    public static @Nullable String detectTerminalAbuseType(@NotNull String command) {
-        String cmd = command.toLowerCase().trim();
-        if (cmd.startsWith("git ") || cmd.equals("git")) return "git";
-        if (cmd.startsWith("sed ")) return "sed";
-        return null;
-    }
-
-    /**
-     * Returns a warning message for terminal commands that have better MCP tool alternatives.
-     * Unlike {@link #detectTerminalAbuseType(String)}, this does NOT block execution — the
-     * command runs normally but the warning is prepended to the output to nudge the agent
-     * toward the purpose-built tool.
-     *
-     * @return a warning string to prepend to output, or null if no reprimand needed
-     */
-    public static @Nullable String getTerminalReprimand(@NotNull String command) {
-        String cmd = command.toLowerCase().trim();
-
-        // grep/rg/ag — prefer search_text or search_symbols
-        if (cmd.startsWith("grep ") || cmd.startsWith("rg ") || cmd.startsWith("ag ") ||
-            cmd.contains("| grep ") || cmd.contains("| rg ") || cmd.contains("| ag ")) {
-            return "⚠️ Prefer search_text or search_symbols over shell grep — "
-                + "they search live editor buffers and support semantic lookup.";
-        }
-
-        // cat/head/tail/less/more — prefer read_file
-        if (isFileViewerCommand(cmd)) {
-            return "⚠️ Prefer read_file over shell cat/head/tail — "
-                + "it reads live editor buffers, not stale disk content.";
-        }
-
-        // find — prefer list_project_files / list_directory_tree
-        if (isFindCommand(cmd) ||
-            cmd.startsWith("find .") || cmd.startsWith("find /")) {
-            return "⚠️ Prefer list_project_files or list_directory_tree over shell find — "
-                + "they respect project structure and exclusions.";
-        }
-
-        // ls/dir/tree — prefer list_project_files / list_directory_tree
-        if (cmd.startsWith("ls ") || cmd.equals("ls") ||
-            cmd.startsWith("dir ") || cmd.equals("dir") ||
-            cmd.startsWith("tree ") || cmd.equals("tree")) {
-            return "⚠️ Prefer list_project_files or list_directory_tree over shell ls/tree — "
-                + "they respect project structure and exclusions.";
-        }
-
-        // test commands — prefer run_tests
-        if (isTestCommand(cmd)) {
-            return "⚠️ Prefer run_tests over shell test commands — "
-                + "it provides structured pass/fail results with IntelliJ test runner integration.";
-        }
-
-        // compile/build commands — prefer build_project
-        if (isGradleCompileCommand(cmd) || isBuildCommand(cmd)) {
-            return "⚠️ Prefer build_project over shell compile/build commands — "
-                + "it uses IntelliJ's incremental compiler with structured error reporting.";
-        }
-
-        return null;
     }
 
     /**
