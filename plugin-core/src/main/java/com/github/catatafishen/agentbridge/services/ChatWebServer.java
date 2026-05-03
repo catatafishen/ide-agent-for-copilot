@@ -1725,6 +1725,8 @@ public final class ChatWebServer implements Disposable {
         }
     }
 
+    private static final String NULL_CONTENT_JSON = "{\"content\":null}";
+
     private void handlePlan(HttpExchange exchange) throws IOException {
         exchange.getResponseHeaders().set(HDR_ACCESS_CONTROL_ORIGIN, "*");
         if (!"GET".equals(exchange.getRequestMethod())) {
@@ -1736,12 +1738,12 @@ public final class ChatWebServer implements Disposable {
             ActiveAgentManager manager = ActiveAgentManager.getInstance(project);
             java.nio.file.Path sessionDir = manager.getClient().getSessionDirectory();
             if (sessionDir == null) {
-                sendJson(exchange, "{\"content\":null}");
+                sendJson(exchange, NULL_CONTENT_JSON);
                 return;
             }
             java.nio.file.Path planFile = sessionDir.resolve("plan.md");
             if (!java.nio.file.Files.isRegularFile(planFile)) {
-                sendJson(exchange, "{\"content\":null}");
+                sendJson(exchange, NULL_CONTENT_JSON);
                 return;
             }
             String content = java.nio.file.Files.readString(planFile, java.nio.charset.StandardCharsets.UTF_8);
@@ -1750,7 +1752,7 @@ public final class ChatWebServer implements Disposable {
             sendJson(exchange, GSON.toJson(json));
         } catch (Exception e) {
             LOG.warn("handlePlan error", e);
-            sendJson(exchange, "{\"content\":null}");
+            sendJson(exchange, NULL_CONTENT_JSON);
         }
     }
 

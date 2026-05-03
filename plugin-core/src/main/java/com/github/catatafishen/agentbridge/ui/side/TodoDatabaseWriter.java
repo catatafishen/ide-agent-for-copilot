@@ -22,7 +22,7 @@ public final class TodoDatabaseWriter {
     }
 
     /**
-     * Creates a new todo item with the given fields.
+     * Creates a new task item with the given fields.
      *
      * @throws SQLException if the database cannot be opened or the write fails
      */
@@ -44,7 +44,7 @@ public final class TodoDatabaseWriter {
     }
 
     /**
-     * Partially updates an existing todo item. Only non-null parameters are written.
+     * Partially updates an existing task item. Only non-null parameters are written.
      * {@code updated_at} is always refreshed.
      *
      * @throws SQLException if the database cannot be opened or the write fails
@@ -75,7 +75,7 @@ public final class TodoDatabaseWriter {
     }
 
     /**
-     * Deletes the todo item with the given id.
+     * Deletes the task item with the given id.
      *
      * @throws SQLException if the database cannot be opened or the write fails
      */
