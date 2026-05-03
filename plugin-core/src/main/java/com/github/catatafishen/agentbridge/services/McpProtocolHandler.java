@@ -39,6 +39,7 @@ import java.nio.file.Paths;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 /**
  * Handles MCP (Model Context Protocol) JSON-RPC messages.
@@ -504,10 +505,11 @@ public final class McpProtocolHandler {
                 .callTool(toolName, arguments, meta.toolUseId());
 
             long durationMs = System.currentTimeMillis() - callStartMs;
-            resultText = applyPostHook(toolName, arguments, resultText, durationMs);
+            var postOutcome = applyPostHook(toolName, arguments, resultText, durationMs);
+            resultText = postOutcome.output();
             resultText = ToolOutputHookRunner.applyHook(project, toolName, arguments, resultText, settings);
             resultText = truncateIfNeeded(resultText);
-            boolean isError = ToolError.isError(resultText);
+            boolean isError = postOutcome.isError() || ToolError.isError(resultText);
 
             if (!isError) {
                 resultText = appendOutputTemplate(resultText, toolName, settings);
@@ -520,10 +522,12 @@ public final class McpProtocolHandler {
             LOG.warn("[MCP] tool error: " + toolName, e);
             String errorMsg = ToolError.of(McpErrorCode.INTERNAL_ERROR, e.getMessage());
             long durationMs = System.currentTimeMillis() - callStartMs;
-            errorMsg = applyFailureHook(toolName, arguments, errorMsg, durationMs);
-            liveService.complete(callId, errorMsg,
-                System.currentTimeMillis() - callStartMs, false);
-            return buildToolResult(msg, errorMsg, true);
+            var failOutcome = applyFailureHook(toolName, arguments, errorMsg, durationMs);
+            String finalOutput = Objects.requireNonNullElse(failOutcome.output(), errorMsg);
+            boolean isError = failOutcome.isError();
+            liveService.complete(callId, finalOutput,
+                System.currentTimeMillis() - callStartMs, !isError);
+            return buildToolResult(msg, finalOutput, isError);
         } finally {
             McpCallContext.clear();
         }
@@ -564,29 +568,25 @@ public final class McpProtocolHandler {
         return new PreHookApplication(arguments, null);
     }
 
-    /**
-     * Applies the success hook chain, returning possibly modified output.
-     */
-    private @Nullable String applyPostHook(@NotNull String toolName, @NotNull JsonObject arguments,
-                                           @Nullable String output, long durationMs) {
+    private @NotNull HookPipeline.PostHookOutcome applyPostHook(@NotNull String toolName,
+                                                                @NotNull JsonObject arguments,
+                                                                @Nullable String output, long durationMs) {
         try {
             return HookPipeline.runSuccessHooks(project, toolName, arguments, output, durationMs);
         } catch (HookExecutor.HookExecutionException e) {
             LOG.warn("[MCP] success hook failed for " + toolName, e);
-            return output;
+            return new HookPipeline.PostHookOutcome(output, false);
         }
     }
 
-    /**
-     * Applies the failure hook chain, returning possibly modified error message.
-     */
-    private @NotNull String applyFailureHook(@NotNull String toolName, @NotNull JsonObject arguments,
-                                             @NotNull String errorMsg, long durationMs) {
+    private @NotNull HookPipeline.PostHookOutcome applyFailureHook(@NotNull String toolName,
+                                                                   @NotNull JsonObject arguments,
+                                                                   @NotNull String errorMsg, long durationMs) {
         try {
             return HookPipeline.runFailureHooks(project, toolName, arguments, errorMsg, durationMs);
         } catch (HookExecutor.HookExecutionException e) {
             LOG.warn("[MCP] failure hook failed for " + toolName, e);
-            return errorMsg;
+            return new HookPipeline.PostHookOutcome(errorMsg, true);
         }
     }
 
