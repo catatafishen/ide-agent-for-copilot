@@ -47,6 +47,8 @@ public final class PlatformApiCompat {
     private static final String LANG_SHELL_SCRIPT = "Shell Script";
     private static final String LANG_JAVASCRIPT = "JavaScript";
     private static final String LANG_PYTHON = "Python";
+    private static final String ROOT_TYPE_RESOURCES = "resources";
+    private static final String ROOT_TYPE_GENERATED_SOURCES = "generated_sources";
 
     /**
      * Categories of source root types, used by {@link #classifySourceRootType(String)}.
@@ -968,10 +970,10 @@ public final class PlatformApiCompat {
      */
     static SourceRootKind classifySourceRootType(@NotNull String type) {
         boolean isTest = type.startsWith("test_");
-        if (type.contains("resources")) {
+        if (type.contains(ROOT_TYPE_RESOURCES)) {
             return isTest ? SourceRootKind.TEST_RESOURCE : SourceRootKind.RESOURCE;
         }
-        if ("generated_sources".equals(type)) {
+        if (ROOT_TYPE_GENERATED_SOURCES.equals(type)) {
             return SourceRootKind.GENERATED_SOURCE;
         }
         return isTest ? SourceRootKind.TEST_SOURCE : SourceRootKind.SOURCE;
@@ -1027,10 +1029,10 @@ public final class PlatformApiCompat {
             && rootType == org.jetbrains.jps.model.java.JavaResourceRootType.TEST_RESOURCE;
         boolean isResource = rootType instanceof org.jetbrains.jps.model.java.JavaResourceRootType;
 
-        if (isGenerated) return isTest || isTestResource ? "generated_test_sources" : "generated_sources";
+        if (isGenerated) return isTest || isTestResource ? "generated_test_sources" : ROOT_TYPE_GENERATED_SOURCES;
         if (isTestResource) return "test_resources";
         if (isTest) return "test_sources";
-        if (isResource) return "resources";
+        if (isResource) return ROOT_TYPE_RESOURCES;
         return "sources";
     }
 
@@ -1052,9 +1054,9 @@ public final class PlatformApiCompat {
         var result = new java.util.LinkedHashMap<String, java.util.List<String>>();
         result.put("sources", new java.util.ArrayList<>());
         result.put("test_sources", new java.util.ArrayList<>());
-        result.put("resources", new java.util.ArrayList<>());
+        result.put(ROOT_TYPE_RESOURCES, new java.util.ArrayList<>());
         result.put("test_resources", new java.util.ArrayList<>());
-        result.put("generated_sources", new java.util.ArrayList<>());
+        result.put(ROOT_TYPE_GENERATED_SOURCES, new java.util.ArrayList<>());
         result.put("generated_test_sources", new java.util.ArrayList<>());
         result.put("excluded", new java.util.ArrayList<>());
 
@@ -1064,24 +1066,37 @@ public final class PlatformApiCompat {
         for (var module : com.intellij.openapi.module.ModuleManager.getInstance(project).getModules()) {
             var rootManager = com.intellij.openapi.roots.ModuleRootManager.getInstance(module);
             for (var contentEntry : rootManager.getContentEntries()) {
-                for (var sourceFolder : contentEntry.getSourceFolders()) {
-                    com.intellij.openapi.vfs.VirtualFile file = sourceFolder.getFile();
-                    if (file == null) continue;
-                    String classification = classifyFileSourceRoot(fileIndex, file);
-                    java.util.List<String> bucket = result.get(classification);
-                    if (bucket != null) {
-                        bucket.add(file.getPath());
-                    }
-                }
-                for (var excludeFolder : contentEntry.getExcludeFolders()) {
-                    com.intellij.openapi.vfs.VirtualFile file = excludeFolder.getFile();
-                    if (file != null) {
-                        result.get("excluded").add(file.getPath());
-                    }
-                }
+                classifySourceFolders(contentEntry, fileIndex, result);
+                collectExcludedFolders(contentEntry, result);
             }
         }
         return result;
+    }
+
+    private static void classifySourceFolders(
+        @NotNull com.intellij.openapi.roots.ContentEntry contentEntry,
+        @NotNull com.intellij.openapi.roots.ProjectFileIndex fileIndex,
+        @NotNull java.util.Map<String, java.util.List<String>> result) {
+        for (var sourceFolder : contentEntry.getSourceFolders()) {
+            com.intellij.openapi.vfs.VirtualFile file = sourceFolder.getFile();
+            if (file == null) continue;
+            String classification = classifyFileSourceRoot(fileIndex, file);
+            java.util.List<String> bucket = result.get(classification);
+            if (bucket != null) {
+                bucket.add(file.getPath());
+            }
+        }
+    }
+
+    private static void collectExcludedFolders(
+        @NotNull com.intellij.openapi.roots.ContentEntry contentEntry,
+        @NotNull java.util.Map<String, java.util.List<String>> result) {
+        for (var excludeFolder : contentEntry.getExcludeFolders()) {
+            com.intellij.openapi.vfs.VirtualFile file = excludeFolder.getFile();
+            if (file != null) {
+                result.get("excluded").add(file.getPath());
+            }
+        }
     }
 
     /**
@@ -1518,6 +1533,43 @@ public final class PlatformApiCompat {
     public static @NotNull java.util.List<com.intellij.ide.ui.laf.UIThemeLookAndFeelInfo> getInstalledThemes(
         @NotNull com.intellij.ide.ui.LafManager lafManager) {
         return kotlin.sequences.SequencesKt.toList(lafManager.getInstalledThemes());
+    }
+
+    /**
+     * Applies a look-and-feel theme and updates the UI.
+     *
+     * <p><b>Why extracted:</b> Calling {@code LafManager.updateUI()} directly can trigger
+     * {@code EditorColorsManagerImpl.getSchemeForCurrentUITheme()}, which logs a platform-level
+     * error when the theme's declared {@code editorSchemeId} (e.g. "IntelliJ Light") is not
+     * registered as a color scheme in the current IDE installation. This is an IntelliJ platform
+     * bug (the bundled "IntelliJ Light" theme references a scheme that doesn't always exist).
+     *
+     * <p>To prevent the error we pre-set the global color scheme to the theme's declared scheme
+     * when it exists, or fall back to the IDE default scheme when it doesn't — so the registry
+     * lookup inside {@code updateUI()} succeeds silently. We then use
+     * {@code setCurrentLookAndFeel(theme, true)} (the integrated single-call form) rather than
+     * the two-step {@code setCurrentLookAndFeel(theme, false)} + explicit {@code updateUI()}.</p>
+     */
+    public static void applyLookAndFeel(
+        @NotNull com.intellij.ide.ui.LafManager lafManager,
+        @NotNull com.intellij.ide.ui.laf.UIThemeLookAndFeelInfo theme
+    ) {
+        String schemeId = theme.getEditorSchemeId();
+        if (schemeId != null) {
+            com.intellij.openapi.editor.colors.EditorColorsManager ecm =
+                com.intellij.openapi.editor.colors.EditorColorsManager.getInstance();
+            com.intellij.openapi.editor.colors.EditorColorsScheme scheme = ecm.getScheme(schemeId);
+            if (scheme == null) {
+                // Theme references a color scheme that is not registered (IntelliJ platform bug).
+                // Pre-set the IDE default scheme so getSchemeForCurrentUITheme() does not log an error.
+                com.intellij.openapi.editor.colors.EditorColorsScheme defaultScheme =
+                    ecm.getScheme(com.intellij.openapi.editor.colors.EditorColorsScheme.DEFAULT_SCHEME_NAME);
+                if (defaultScheme != null) {
+                    ecm.setGlobalScheme(defaultScheme);
+                }
+            }
+        }
+        lafManager.setCurrentLookAndFeel(theme, true);
     }
 
     /**
