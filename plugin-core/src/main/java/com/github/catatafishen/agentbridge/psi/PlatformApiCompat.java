@@ -395,6 +395,42 @@ public final class PlatformApiCompat {
     }
 
     /**
+     * Subscribes a callback to UI settings change events (e.g. IDE font size changes triggered
+     * by Increase/Decrease IDE Font Size actions).
+     *
+     * <p><b>Why extracted:</b> {@code UISettings.TOPIC} has the same Kotlin platform-type
+     * inference issue as {@code LafManagerListener.TOPIC} — the inferred {@code Topic!} type
+     * does not satisfy the generic bound in {@code MessageBusConnection.subscribe()} from
+     * Kotlin call sites.</p>
+     */
+    public static void subscribeUiSettingsChanges(
+        @NotNull com.intellij.openapi.Disposable parentDisposable,
+        @NotNull Runnable onUiSettingsChanged) {
+        var conn = com.intellij.openapi.application.ApplicationManager.getApplication()
+            .getMessageBus().connect(parentDisposable);
+        conn.subscribe(com.intellij.ide.ui.UISettingsListener.TOPIC,
+            (com.intellij.ide.ui.UISettingsListener) settings -> onUiSettingsChanged.run());
+    }
+
+    /**
+     * Subscribes a callback to editor color scheme changes (e.g. fired by Alt+Shift+./,,
+     * which change the global editor font size via {@code IncreaseFontSizeAction}).
+     *
+     * <p><b>Why extracted:</b> {@code EditorColorsManager.TOPIC} has the same Kotlin
+     * platform-type inference issue as other {@code TOPIC} fields — the inferred
+     * {@code Topic!} type does not satisfy the generic bound in
+     * {@code MessageBusConnection.subscribe()} from Kotlin call sites.</p>
+     */
+    public static void subscribeEditorColorSchemeChanges(
+        @NotNull com.intellij.openapi.Disposable parentDisposable,
+        @NotNull Runnable onSchemeChanged) {
+        var conn = com.intellij.openapi.application.ApplicationManager.getApplication()
+            .getMessageBus().connect(parentDisposable);
+        conn.subscribe(com.intellij.openapi.editor.colors.EditorColorsManager.TOPIC,
+            (com.intellij.openapi.editor.colors.EditorColorsListener) scheme -> onSchemeChanged.run());
+    }
+
+    /**
      * Returns {@code true} if the current IDE UI theme is dark.
      *
      * <p><b>Why extracted:</b> {@code UIThemeLookAndFeelInfo.isDark()} is only available from
@@ -1533,6 +1569,39 @@ public final class PlatformApiCompat {
     public static @NotNull java.util.List<com.intellij.ide.ui.laf.UIThemeLookAndFeelInfo> getInstalledThemes(
         @NotNull com.intellij.ide.ui.LafManager lafManager) {
         return kotlin.sequences.SequencesKt.toList(lafManager.getInstalledThemes());
+    }
+
+    /**
+     * Applies a look-and-feel theme and updates the UI.
+     *
+     * <p><b>Why extracted:</b> Calling {@code LafManager.updateUI()} directly can trigger
+     * {@code EditorColorsManagerImpl.getSchemeForCurrentUITheme()}, which logs a platform-level
+     * error when the theme's declared {@code editorSchemeId} (e.g. "IntelliJ Light") is not
+     * registered as a color scheme in the current IDE installation. This is an IntelliJ platform
+     * bug (the bundled "IntelliJ Light" theme references a scheme that doesn't always exist).
+     *
+     * <p>To prevent the error we pre-set the global color scheme to the theme's declared scheme
+     * when it exists, or fall back to the IDE default scheme when it doesn't — so the registry
+     * lookup inside {@code updateUI()} succeeds silently. We then use
+     * {@code setCurrentLookAndFeel(theme, true)} (the integrated single-call form) rather than
+     * the two-step {@code setCurrentLookAndFeel(theme, false)} + explicit {@code updateUI()}.</p>
+     */
+    public static void applyLookAndFeel(
+        @NotNull com.intellij.ide.ui.LafManager lafManager,
+        @NotNull com.intellij.ide.ui.laf.UIThemeLookAndFeelInfo theme
+    ) {
+        String schemeId = theme.getEditorSchemeId();
+        if (schemeId != null) {
+            com.intellij.openapi.editor.colors.EditorColorsManager ecm =
+                com.intellij.openapi.editor.colors.EditorColorsManager.getInstance();
+            com.intellij.openapi.editor.colors.EditorColorsScheme scheme = ecm.getScheme(schemeId);
+            if (scheme == null) {
+                // Theme references a color scheme that is not registered (IntelliJ platform bug).
+                // Pre-set the IDE's current global scheme so getSchemeForCurrentUITheme() does not log an error.
+                ecm.setGlobalScheme(ecm.getGlobalScheme());
+            }
+        }
+        lafManager.setCurrentLookAndFeel(theme, true);
     }
 
     /**
