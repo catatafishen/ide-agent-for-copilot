@@ -237,6 +237,18 @@ class ConversationEntryStoreTest {
     }
 
     @Test
+    void updateToolCall_capturesLateArrivingArguments() {
+        // ACP agents may send tool_call without arguments, then supply them later
+        // in a tool_call_update (status=running). Regression test for issue #1008.
+        store.addToolCallEntry("t1", "read_file", null, "file");
+        var update = new ChatPanelApi.ToolCallUpdate(null, null, null, false, null, "{\"path\":\"foo.txt\"}", null);
+        store.updateToolCall("t1", "running", update);
+
+        var entry = (EntryData.ToolCall) store.getEntries().getFirst();
+        assertEquals("{\"path\":\"foo.txt\"}", entry.getArguments());
+    }
+
+    @Test
     void updateToolCall_ignoresUnknownId() {
         var update = new ChatPanelApi.ToolCallUpdate("details", null, null, false, null, null, null);
         // Should not throw

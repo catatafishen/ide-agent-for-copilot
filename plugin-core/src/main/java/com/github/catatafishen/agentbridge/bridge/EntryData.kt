@@ -1,6 +1,6 @@
 package com.github.catatafishen.agentbridge.bridge
 
-import java.util.UUID
+import java.util.*
 
 /**
  * Origin of a nudge message.
@@ -77,7 +77,10 @@ sealed class EntryData {
 
     class ToolCall @JvmOverloads constructor(
         val title: String,
-        val arguments: String? = null,
+        // ACP allows a tool_call to be sent without arguments, with the real
+        // arguments arriving later in a tool_call_update (status=running). Must
+        // stay mutable so ConversationEntryStore.updateToolCall can capture them.
+        var arguments: String? = null,
         var kind: String = "other",
         var result: String? = null,
         var status: String? = null,

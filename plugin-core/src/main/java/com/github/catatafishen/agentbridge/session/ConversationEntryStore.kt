@@ -137,6 +137,7 @@ class ConversationEntryStore {
             update.details?.let { entry.result = it }
             update.description?.let { entry.description = it }
             update.kind?.let { entry.kind = it }
+            update.arguments?.let { entry.arguments = it }
             entry.autoDenied = update.autoDenied
             update.denialReason?.let { entry.denialReason = it }
         }

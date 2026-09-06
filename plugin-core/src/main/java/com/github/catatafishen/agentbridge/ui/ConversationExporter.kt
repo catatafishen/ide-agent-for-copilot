@@ -187,7 +187,8 @@ ul,ol{margin:4px 0;padding-left:22px}
         val displayName = info?.displayName ?: e.title
         val sb = StringBuilder("<details class='tool'><summary>\u2692 ${escapeHtml(displayName)}</summary>")
         if (info?.description != null) sb.append("<div style='font-style:italic;margin:4px 0'>${escapeHtml(info.description)}</div>")
-        if (e.arguments != null) sb.append("<div style='margin:4px 0'><b>Parameters:</b><pre><code>${escapeHtml(e.arguments)}</code></pre></div>")
+        val arguments = e.arguments
+        if (arguments != null) sb.append("<div style='margin:4px 0'><b>Parameters:</b><pre><code>${escapeHtml(arguments)}</code></pre></div>")
         sb.append("</details>\n")
         return sb.toString()
     }
