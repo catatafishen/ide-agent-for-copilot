@@ -23,6 +23,8 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -274,6 +276,56 @@ class McpHttpServerStaticMethodsTest {
                 "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}"));
 
             verify(exchange).sendResponseHeaders(eq(404), anyLong());
+        }
+
+        @Test
+        void unknownSessionWithConnectedAgentTriggersAutoReconnect() throws Exception {
+            Project project = mock(Project.class);
+            ActiveAgentManager agentManager = mock(ActiveAgentManager.class);
+            when(project.getService(ActiveAgentManager.class)).thenReturn(agentManager);
+            when(agentManager.isConnected()).thenReturn(true);
+            McpHttpServer server = new McpHttpServer(project);
+            // Run the reconnect synchronously so the assertions below are deterministic —
+            // the real app-wide executor's scheduling latency is unpredictable when many
+            // tests share the same JVM.
+            server.setReconnectExecutorForTest(Runnable::run);
+            Headers requestHeaders = new Headers();
+            requestHeaders.set(McpHttpServer.MCP_SESSION_ID_HEADER, "unknown");
+            HttpExchange exchange = exchange(requestHeaders, new Headers(),
+                new ByteArrayOutputStream());
+
+            assertNull(server.resolveHttpOwner(exchange,
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}"));
+
+            verify(agentManager).restart();
+
+            // A second expired-session request within the cooldown window must not trigger
+            // a second restart — otherwise a burst of failed tool calls from the same dying
+            // agent would thrash restart() repeatedly.
+            HttpExchange secondExchange = exchange(requestHeaders, new Headers(),
+                new ByteArrayOutputStream());
+            assertNull(server.resolveHttpOwner(secondExchange,
+                "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\"}"));
+            verify(agentManager, times(1)).restart();
+        }
+
+        @Test
+        void unknownSessionWithDisconnectedAgentDoesNotAutoReconnect() throws Exception {
+            Project project = mock(Project.class);
+            ActiveAgentManager agentManager = mock(ActiveAgentManager.class);
+            when(project.getService(ActiveAgentManager.class)).thenReturn(agentManager);
+            when(agentManager.isConnected()).thenReturn(false);
+            McpHttpServer server = new McpHttpServer(project);
+            server.setReconnectExecutorForTest(Runnable::run);
+            Headers requestHeaders = new Headers();
+            requestHeaders.set(McpHttpServer.MCP_SESSION_ID_HEADER, "unknown");
+            HttpExchange exchange = exchange(requestHeaders, new Headers(),
+                new ByteArrayOutputStream());
+
+            assertNull(server.resolveHttpOwner(exchange,
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}"));
+
+            verify(agentManager, never()).restart();
         }
 
         @Test

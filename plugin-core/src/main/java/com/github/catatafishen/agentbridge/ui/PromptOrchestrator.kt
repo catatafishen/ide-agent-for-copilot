@@ -264,6 +264,7 @@ class PromptOrchestrator(
             AgentScratchTracker.getInstance(project).cleanupExpired()
 
             if (isBlockedByAuth()) return
+            if (isBlockedByMcpDown()) return
 
             val pending = pendingBanner
             if (pending != null) {
@@ -308,6 +309,32 @@ class PromptOrchestrator(
         ApplicationManager.getApplication().invokeLater {
             consolePanel().addErrorEntry("Not signed in. Use the Sign In button in the banner above.")
             copilotBanner()?.triggerCheck()
+        }
+        return true
+    }
+
+    /**
+     * Prevents sending a prompt while the MCP HTTP server (IDE tool bridge) is down.
+     * Without this guard, the agent still receives the prompt and tries to use tools like
+     * read_file/run_command, which then fail one-by-one with no clear explanation to the user.
+     * Attempts a best-effort auto-start first — mirrors
+     * [com.github.catatafishen.agentbridge.client.acp.AcpClient.resolveMcpPort], which only
+     * runs when a *new* agent process launches, so it can't help an already-running client.
+     */
+    private fun isBlockedByMcpDown(): Boolean {
+        val mcpServer = McpServerControl.getInstance(project) ?: return false
+        if (mcpServer.isRunning) return false
+        try {
+            mcpServer.start()
+        } catch (_: Exception) {
+            // fall through — the isRunning check below reports the failure to the user
+        }
+        if (mcpServer.isRunning) return false
+        ApplicationManager.getApplication().invokeLater {
+            consolePanel().addErrorEntry(
+                "MCP server is not running, so IDE tools (read_file, run_command, etc.) are " +
+                    "unavailable. Restart it from Settings → MCP Server, then try again."
+            )
         }
         return true
     }

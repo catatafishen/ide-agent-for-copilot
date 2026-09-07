@@ -33,8 +33,10 @@ public final class McpServerSettings implements PersistentStateComponent<McpServ
     /**
      * Default idle timeout for a Streamable-HTTP transport session, in minutes. Sessions with
      * no activity for this long are expired and their owned terminal resources released.
+     * 24 hours (rather than a couple of hours) so a machine left idle overnight, or over a
+     * weekend day, doesn't silently expire the session before the user resumes work.
      */
-    public static final int DEFAULT_HTTP_SESSION_IDLE_TIMEOUT_MINUTES = 120;
+    public static final int DEFAULT_HTTP_SESSION_IDLE_TIMEOUT_MINUTES = 24 * 60;
 
     /**
      * Default project-wide cap on integrated terminal resources across all MCP sessions.

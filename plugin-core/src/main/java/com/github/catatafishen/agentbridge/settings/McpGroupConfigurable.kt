@@ -84,15 +84,19 @@ class McpGroupConfigurable(private val project: Project) :
                             "<code>initialize</code> requests beyond this limit receive HTTP 503."
                     )
             }
-            row("Idle session timeout (minutes):") {
-                spinner(1..43_200, 1)
+            row("Idle session timeout (hours):") {
+                // Displayed/edited in hours (max 720h = 30 days) since the underlying range
+                // is too large to browse comfortably in minutes; stored internally in minutes
+                // (McpServerSettings.httpSessionIdleTimeoutMinutes) to avoid a settings migration.
+                spinner(1..720, 1)
                     .bindIntValue(
-                        { settings.httpSessionIdleTimeoutMinutes },
-                        { settings.httpSessionIdleTimeoutMinutes = it }
+                        { minutesToHours(settings.httpSessionIdleTimeoutMinutes) },
+                        { settings.httpSessionIdleTimeoutMinutes = it * MINUTES_PER_HOUR }
                     )
                     .comment(
                         "How long an inactive MCP HTTP session is retained before its owned " +
-                            "terminals are released. Default: 120 minutes."
+                            "terminals are released. Default: 24 hours. Raise this if your " +
+                            "machine is often idle for multiple days between sessions."
                     )
             }
             row("Max agent terminals (project-wide):") {
@@ -225,10 +229,19 @@ class McpGroupConfigurable(private val project: Project) :
 
     companion object {
         const val ID = "com.github.catatafishen.agentbridge.mcp"
+        private const val MINUTES_PER_HOUR = 60
         private const val RESTART_TOOLTIP =
             "Stop and restart the MCP server to pick up tool registration changes. " +
                 "Also reconnects the active agent so it doesn't keep using an MCP session " +
                 "the restarted server no longer recognizes."
         private val LOG = Logger.getInstance(McpGroupConfigurable::class.java)
+
+        /**
+         * Converts a stored minutes value to whole hours for display in the settings spinner,
+         * rounding to the nearest hour. Older settings files may hold non-hour-aligned values
+         * (e.g. a user-entered 999 from before this field switched to an hours display).
+         */
+        private fun minutesToHours(minutes: Int): Int =
+            ((minutes + (MINUTES_PER_HOUR / 2)) / MINUTES_PER_HOUR).coerceAtLeast(1)
     }
 }
