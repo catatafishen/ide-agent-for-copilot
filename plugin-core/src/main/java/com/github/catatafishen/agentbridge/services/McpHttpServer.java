@@ -18,7 +18,9 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * HTTP server exposing the MCP (Model Context Protocol) endpoint.
@@ -63,10 +65,25 @@ public final class McpHttpServer implements Disposable, McpServerControl {
     private java.util.concurrent.ScheduledExecutorService sessionCleanupExecutor;
     private final AtomicInteger activeConnections = new AtomicInteger(0);
     private final McpSessionRegistry httpSessions = new McpSessionRegistry();
+    private final AtomicLong lastAutoReconnectAtNanos = new AtomicLong(0);
+    private static final long AUTO_RECONNECT_COOLDOWN_NANOS = TimeUnit.SECONDS.toNanos(30);
+    // Overridable in tests: the shared app-wide AppExecutorUtil pool can be contended by other
+    // tests running in the same JVM, making its scheduling latency unpredictable under load.
+    private java.util.concurrent.Executor reconnectExecutor =
+        com.intellij.util.concurrency.AppExecutorUtil.getAppExecutorService();
     private volatile boolean running;
 
     public McpHttpServer(@NotNull Project project) {
         this.project = project;
+    }
+
+    /**
+     * Test-only hook to replace the executor used by {@link #maybeAutoReconnectExpiredSession}
+     * with a synchronous/deterministic one, avoiding flakiness from the real app-wide thread
+     * pool's scheduling latency under test-JVM contention.
+     */
+    void setReconnectExecutorForTest(@NotNull java.util.concurrent.Executor executor) {
+        this.reconnectExecutor = executor;
     }
 
     public static McpHttpServer getInstance(@NotNull Project project) {
@@ -389,6 +406,14 @@ public final class McpHttpServer implements Disposable, McpServerControl {
             return null;
         }
         if (!httpSessions.touch(sessionId)) {
+            // The connected agent process is still alive and trying to use tools, but its
+            // MCP session has expired server-side (idle sweep, manual server restart, etc.).
+            // Without this, the CLI would keep sending tool_call requests that all 404 forever
+            // — the user only discovers it after several failed tool calls, and the only fix
+            // was manually clicking "Restart MCP Server" in Settings. Auto-reconnect here so
+            // the agent renegotiates a fresh MCP session immediately; restart() also attempts
+            // session/resume so conversation history is preserved when the agent supports it.
+            maybeAutoReconnectExpiredSession(sessionId);
             sendJsonRpcError(exchange, 404, -32600,
                 "Unknown or expired MCP session: " + sessionId);
             return null;
@@ -453,6 +478,44 @@ public final class McpHttpServer implements Disposable, McpServerControl {
         AgentTabTracker.getInstance(project).closeOwnedTerminalTabs(
             McpSessionRegistry.ownerKey("http", sessionId));
         return true;
+    }
+
+    /**
+     * Auto-reconnects the active agent when its own MCP HTTP session has expired, or is
+     * otherwise unknown to this server. Without this, a live conversation would sit there
+     * repeatedly failing tool calls until the user notices and manually restarts the server.
+     *
+     * <p>Throttled to once per {@link #AUTO_RECONNECT_COOLDOWN_NANOS} — a burst of tool calls
+     * from the same dying session would otherwise trigger a reconnect storm. Best-effort: the
+     * restart runs {@link ActiveAgentManager#restart()}, which attempts {@code session/resume}
+     * so conversation history is preserved when the agent advertises that capability.</p>
+     */
+    private void maybeAutoReconnectExpiredSession(@NotNull String sessionId) {
+        long now = System.nanoTime();
+        long last = lastAutoReconnectAtNanos.get();
+        if (now - last < AUTO_RECONNECT_COOLDOWN_NANOS
+            || !lastAutoReconnectAtNanos.compareAndSet(last, now)) {
+            return;
+        }
+        // Resolved defensively (like tryGetSettings()): Project.getService() throws
+        // IllegalStateException on a bare mock Project in unit tests. getInstance() is
+        // @NotNull by contract, so no separate null check is needed once construction succeeds.
+        ActiveAgentManager agentManager;
+        try {
+            agentManager = ActiveAgentManager.getInstance(project);
+        } catch (RuntimeException e) {
+            return;
+        }
+        if (!agentManager.isConnected()) return;
+        LOG.warn("MCP session " + sessionId + " expired while the agent was still connected; "
+            + "auto-reconnecting so it renegotiates a fresh MCP session.");
+        reconnectExecutor.execute(() -> {
+            try {
+                agentManager.restart();
+            } catch (RuntimeException e) {
+                LOG.warn("Auto-reconnect after expired MCP session failed", e);
+            }
+        });
     }
 
     private void startHttpSessionCleanup() {
