@@ -174,18 +174,7 @@ public final class KiroClient extends AcpClient {
 
     private void handleGetAccessToken(com.google.gson.JsonElement id) {
         try {
-            KiroTokenRecord token = readKiroToken();
-            // In ACP host-callback auth the CLI delegates token refresh to us. If the cached token
-            // is expired or within Kiro's refresh buffer, returning it as-is makes KAS reject the
-            // prompt with "Authentication token is invalid" and silently kills the turn (the
-            // "Kiro loses the session mid-conversation" symptom). Ask the CLI to refresh its own
-            // token first (see refreshKiroTokenViaCli), then re-read the DB.
-            if (token != null && !isTokenFresh(token.expiresAt(), java.time.Instant.now(), REFRESH_BUFFER_MILLIS)) {
-                LOG.info("Kiro v3: cached access token is expired or within the refresh buffer (expires "
-                    + token.expiresAt() + ") — asking the Kiro CLI to refresh before returning it");
-                refreshKiroTokenViaCli();
-                token = readKiroToken();
-            }
+            KiroTokenRecord token = resolveKiroToken();
             if (token == null) {
                 LOG.warn("Kiro v3: _kiro/auth/getAccessToken — no token found in local DB; " +
                     "run 'kiro login' to authenticate");
@@ -223,6 +212,31 @@ public final class KiroClient extends AcpClient {
             LOG.warn("Kiro v3: _kiro/auth/getAccessToken — failed to read token: " + e.getMessage(), e);
             transport.sendError(id, -32000, "Auth refresh callback failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * Reads the Kiro OIDC token, triggering a CLI refresh first if the cached token is expired
+     * or within the refresh buffer. Returns the token after the optional refresh, or {@code null}
+     * if no token exists in the local DB.
+     *
+     * <p>Protected so tests can override it to inject a controlled token without hitting the
+     * real filesystem or spawning a {@code kiro-cli whoami} subprocess.</p>
+     */
+    @org.jetbrains.annotations.Nullable
+    protected KiroTokenRecord resolveKiroToken() throws Exception {
+        KiroTokenRecord token = readKiroToken();
+        // In ACP host-callback auth the CLI delegates token refresh to us. If the cached token
+        // is expired or within Kiro's refresh buffer, returning it as-is makes KAS reject the
+        // prompt with "Authentication token is invalid" and silently kills the turn (the
+        // "Kiro loses the session mid-conversation" symptom). Ask the CLI to refresh its own
+        // token first (see refreshKiroTokenViaCli), then re-read the DB.
+        if (token != null && !isTokenFresh(token.expiresAt(), java.time.Instant.now(), REFRESH_BUFFER_MILLIS)) {
+            LOG.info("Kiro v3: cached access token is expired or within the refresh buffer (expires "
+                + token.expiresAt() + ") — asking the Kiro CLI to refresh before returning it");
+            refreshKiroTokenViaCli();
+            token = readKiroToken();
+        }
+        return token;
     }
 
     /**
