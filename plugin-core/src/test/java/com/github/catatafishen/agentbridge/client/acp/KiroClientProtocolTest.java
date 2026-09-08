@@ -292,15 +292,158 @@ class KiroClientProtocolTest {
             // Exactly one of sendResponse or sendError must have been called
             // (not both, not neither). In CI there's no Kiro DB → sendError expected.
         }
+    }
+
+    // ── _kiro/auth/getAccessToken — controlled token scenarios ───────────
+
+    /**
+     * Tests for {@link KiroClient#handleGetAccessToken} that need deterministic control over the
+     * token returned by {@link KiroClient#resolveKiroToken()}. A subclass overrides the method so
+     * no real filesystem access or {@code kiro-cli} subprocess is needed.
+     */
+    @Nested
+    @DisplayName("_kiro/auth/getAccessToken — controlled token scenarios via resolveKiroToken override")
+    class GetAccessTokenControlled {
+
+        /**
+         * Testable subclass that overrides {@link KiroClient#resolveKiroToken()} to return a
+         * caller-controlled token, bypassing the real SQLite DB and CLI refresh subprocess.
+         */
+        private static class TestableKiroClient extends KiroClient {
+            private final KiroTokenRecord suppliedToken;
+
+            TestableKiroClient(JsonRpcTransport transport, KiroTokenRecord token) {
+                super(null, transport);
+                this.suppliedToken = token;
+            }
+
+            @Override
+            protected KiroTokenRecord resolveKiroToken() {
+                return suppliedToken;
+            }
+        }
 
         @Test
-        @DisplayName("unknown method is delegated to parent AcpClient.handleAgentRequest without throw")
-        void unknownMethodDelegatedToParentNoThrow() {
-            JsonElement requestId = new JsonPrimitive(7);
+        @DisplayName("null token → sendError with 'run kiro login' message")
+        void nullTokenSendsLoginError() {
+            JsonRpcTransport transport = mock(JsonRpcTransport.class);
+            KiroClient c = new TestableKiroClient(transport, null);
+            c.registerHandlers();
 
-            // A completely unknown method: parent sends METHOD_NOT_FOUND error
+            @SuppressWarnings("unchecked")
+            var requestCaptor = ArgumentCaptor.forClass(BiConsumer.class);
+            verify(transport).onRequest(requestCaptor.capture());
+            BiConsumer<JsonElement, JsonRpcTransport.IncomingRequest> handler = requestCaptor.getValue();
+
+            JsonElement id = new JsonPrimitive(1);
+            handler.accept(id, new JsonRpcTransport.IncomingRequest("_kiro/auth/getAccessToken", null));
+
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<String> msgCaptor = ArgumentCaptor.forClass(String.class);
+            verify(transport).sendError(eq(id), eq(-32000), msgCaptor.capture());
+            assertTrue(msgCaptor.getValue().contains("kiro login"),
+                "Error should tell user to run 'kiro login', got: " + msgCaptor.getValue());
+        }
+
+        @Test
+        @DisplayName("stale token after refresh → sendError with actionable re-authenticate message")
+        void staleTokenAfterRefreshSendsActionableError() {
+            // Token expired 5 minutes ago — isTokenFresh() will return false
+            String expiredAt = java.time.Instant.now().minusSeconds(300).toString();
+            KiroTokenRecord staleToken = new KiroClient.KiroTokenRecord("tok-xyz", expiredAt, "arn:aws:...");
+
+            JsonRpcTransport transport = mock(JsonRpcTransport.class);
+            KiroClient c = new TestableKiroClient(transport, staleToken);
+            c.registerHandlers();
+
+            @SuppressWarnings("unchecked")
+            var requestCaptor = ArgumentCaptor.forClass(BiConsumer.class);
+            verify(transport).onRequest(requestCaptor.capture());
+            BiConsumer<JsonElement, JsonRpcTransport.IncomingRequest> handler = requestCaptor.getValue();
+
+            JsonElement id = new JsonPrimitive(2);
+            handler.accept(id, new JsonRpcTransport.IncomingRequest("_kiro/auth/getAccessToken", null));
+
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<String> msgCaptor = ArgumentCaptor.forClass(String.class);
+            verify(transport).sendError(eq(id), eq(-32000), msgCaptor.capture());
+            String msg = msgCaptor.getValue();
+            assertTrue(msg.contains("expired") || msg.contains("refresh"),
+                "Error should mention 'expired' or 'refresh', got: " + msg);
+            assertTrue(msg.contains("kiro login"),
+                "Error should tell user to run 'kiro login', got: " + msg);
+        }
+
+        @Test
+        @DisplayName("fresh token → sendResponse with accessToken, expiresAt, and profileArn")
+        void freshTokenSendsFullResponse() {
+            // Token expires 1 hour from now — well outside the 200s buffer
+            String freshAt = java.time.Instant.now().plusSeconds(3600).toString();
+            KiroTokenRecord freshToken = new KiroClient.KiroTokenRecord(
+                "access-token-abc", freshAt, "arn:aws:codewhisperer:us-east-1:123:profile/XYZ");
+
+            JsonRpcTransport transport = mock(JsonRpcTransport.class);
+            KiroClient c = new TestableKiroClient(transport, freshToken);
+            c.registerHandlers();
+
+            @SuppressWarnings("unchecked")
+            var requestCaptor = ArgumentCaptor.forClass(BiConsumer.class);
+            verify(transport).onRequest(requestCaptor.capture());
+            BiConsumer<JsonElement, JsonRpcTransport.IncomingRequest> handler = requestCaptor.getValue();
+
+            JsonElement id = new JsonPrimitive(3);
+            handler.accept(id, new JsonRpcTransport.IncomingRequest("_kiro/auth/getAccessToken", null));
+
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<JsonElement> responseCaptor = ArgumentCaptor.forClass(JsonElement.class);
+            verify(transport).sendResponse(eq(id), responseCaptor.capture());
+            JsonObject resp = responseCaptor.getValue().getAsJsonObject();
+            assertEquals("access-token-abc", resp.get("accessToken").getAsString());
+            assertEquals(freshAt, resp.get("expiresAt").getAsString());
+            assertTrue(resp.has("profileArn"), "Response should include profileArn");
+        }
+
+        @Test
+        @DisplayName("fresh token without profileArn → sendResponse without profileArn field")
+        void freshTokenWithoutProfileArnOmitsField() {
+            String freshAt = java.time.Instant.now().plusSeconds(3600).toString();
+            KiroTokenRecord tokenNoArn = new KiroClient.KiroTokenRecord("tok-noprofile", freshAt, null);
+
+            JsonRpcTransport transport = mock(JsonRpcTransport.class);
+            KiroClient c = new TestableKiroClient(transport, tokenNoArn);
+            c.registerHandlers();
+
+            @SuppressWarnings("unchecked")
+            var requestCaptor = ArgumentCaptor.forClass(BiConsumer.class);
+            verify(transport).onRequest(requestCaptor.capture());
+            BiConsumer<JsonElement, JsonRpcTransport.IncomingRequest> handler = requestCaptor.getValue();
+
+            JsonElement id = new JsonPrimitive(4);
+            handler.accept(id, new JsonRpcTransport.IncomingRequest("_kiro/auth/getAccessToken", null));
+
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<JsonElement> responseCaptor = ArgumentCaptor.forClass(JsonElement.class);
+            verify(transport).sendResponse(eq(id), responseCaptor.capture());
+            JsonObject resp = responseCaptor.getValue().getAsJsonObject();
+            assertEquals("tok-noprofile", resp.get("accessToken").getAsString());
+            assertFalse(resp.has("profileArn"), "profileArn should be absent when null");
+        }
+
+        // Keep the original "unknown method" test here too so the nested class is self-contained
+        @Test
+        @DisplayName("unknown method is delegated to parent AcpClient.handleAgentRequest without throw")
+        @SuppressWarnings("unchecked")
+        void unknownMethodDelegatedToParentNoThrow() {
+            JsonRpcTransport transport = mock(JsonRpcTransport.class);
+            KiroClient c = new TestableKiroClient(transport, null);
+            c.registerHandlers();
+
+            var requestCaptor = ArgumentCaptor.forClass(BiConsumer.class);
+            verify(transport).onRequest(requestCaptor.capture());
+            BiConsumer<JsonElement, JsonRpcTransport.IncomingRequest> handler = requestCaptor.getValue();
+
             assertDoesNotThrow(() ->
-                requestHandler.accept(requestId,
+                handler.accept(new JsonPrimitive(7),
                     new JsonRpcTransport.IncomingRequest("unknown/method", new JsonObject())));
         }
     }
