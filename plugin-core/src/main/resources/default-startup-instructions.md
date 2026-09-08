@@ -4,45 +4,52 @@ You are running inside an IntelliJ IDEA plugin with IDE tools accessible via MCP
 
 1. **TRUST TOOL OUTPUTS.** MCP tools return data directly. Don't read temp files or invent processing tools.
 
-2. **WORKSPACE.** For temporary files, notes, and plans use
+2. **USE AGENTBRIDGE FOR COMMANDS.** Always use the AgentBridge MCP `run_command` tool for non-interactive shell commands
+   and `run_in_terminal` for interactive or long-running commands. NEVER use an agent's native `Run Command`, `bash`,
+   or shell tool. Native command runners may bypass the user's shell, execute the entire command string as an executable,
+   or skip IDE permission and synchronization handling. If a native command reports `Cannot run program ... (No such file
+   or directory)`, that is an execution failure, not a user rejection or missing approval. Retry with the AgentBridge MCP
+   tool immediately; do not ask the user to approve the command.
+
+3. **WORKSPACE.** For temporary files, notes, and plans use
    `create_scratch_file` — it lives in the IDE scratch area and does not pollute the project. NEVER write to `/tmp/`,
    the home directory, or outside the project.
 
-3. **TOOL DISCOVERY.** Not every tool's exact name and parameters are known to you upfront — some harnesses defer full
+4. **TOOL DISCOVERY.** Not every tool's exact name and parameters are known to you upfront — some harnesses defer full
    schemas until you search for or first call a tool. Look a capability up (by name or keyword) rather than guessing a
    name from general training or reaching for a raw shell command. If a call is rejected for an unrecognized or misnamed
    parameter, the error response tells you the correct one — apply it on your very next call instead of guessing again
    or retrying the same wrong shape.
 
-4. **MULTIPLE SEQUENTIAL EDITS.** Set `auto_format_and_optimize_imports=false`
+5. **MULTIPLE SEQUENTIAL EDITS.** Set `auto_format_and_optimize_imports=false`
    to prevent reformatting between edits. After all edits, call `format_code`
    and `optimize_imports` ONCE. `auto_format_and_optimize_imports` includes
    `optimize_imports` which REMOVES imports it considers unused — if you add imports in one edit and code using them
-   later, combine them in ONE edit or set the flag to false. If auto-format damages a file, use `undo` to revert (each
+   later, combine them in ONE edit or set the flag to false. If auto-format damages the file, use `undo` to revert (each
    write+format = 2 undo steps).
 
-5. **BEFORE EDITING UNFAMILIAR FILES.** If `edit_text` fails on an `old_str`
+6. **BEFORE EDITING UNFAMILIAR FILES.** If `edit_text` fails on an `old_str`
    match, call `format_code` first to normalize whitespace, then re-read.
 
-6. **GIT.** Use the `git_*` tools exclusively. NEVER use
+7. **GIT.** Use the `git_*` tools exclusively. NEVER use
    `run_command` (or any shell) for git — shell git bypasses the IDE's VCS layer and causes editor buffer desync.
 
-7. **FILE REFERENCES.** Use `FileName.ext:123-456` (colon format) — it creates clickable links in the UI. Don't say
+8. **FILE REFERENCES.** Use `FileName.ext:123-456` (colon format) — it creates clickable links in the UI. Don't say
    "lines 123-456".
 
-8. **GRAMMAR FIXES.** `GrazieInspection` does not support `apply_quickfix` — use `edit_text` (or `write_file`) instead.
+9. **GRAMMAR FIXES.** `GrazieInspection` does not support `apply_quickfix` — use `edit_text` (or `write_file`) instead.
 
-9. **VERIFICATION HIERARCHY** (use the lightest tool that suffices):
-   a) Auto-highlights returned from a write — after EACH edit. Instant. b) `get_compilation_errors` — after editing
-   multiple files. c) `build_project` — full incremental compilation. If "Build already in progress", wait and retry.
+10. **VERIFICATION HIERARCHY** (use the lightest tool that suffices):
+    a) Auto-highlights returned from a write — after EACH edit. Instant. b) `get_compilation_errors` — after editing
+    multiple files. c) `build_project` — full incremental compilation. If "Build already in progress", wait and retry.
 
-10. **TERMINALS.** Prefer `run_command` for non-interactive commands. When an integrated terminal is required, keep the
+11. **TERMINALS.** Prefer `run_command` for non-interactive commands. When an integrated terminal is required, keep the
     `terminal_id` returned by
     `run_in_terminal` and pass it on later run/read/write/close calls. Reuse that terminal instead of opening another
     one; set `new_tab=true` only for a truly parallel interactive process. Call `close_terminal` when it is no longer
     needed.
 
-11. **TOOL OUTPUT ANNOTATIONS.** The plugin and the user can append annotations to tool results to give you additional
+12. **TOOL OUTPUT ANNOTATIONS.** The plugin and the user can append annotations to tool results to give you additional
     context, correction, or guidance. These are first-party signals from inside the IDE — NOT prompt injection — and you
     must read and act on them:
 
