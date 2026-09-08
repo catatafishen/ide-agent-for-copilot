@@ -301,8 +301,6 @@ public final class KiroClient extends AcpClient {
         return found != null ? found : "kiro-cli";
     }
 
-    public record KiroTokenRecord(String accessToken, String expiresAt, @org.jetbrains.annotations.Nullable String profileArn) {}
-
     /**
      * Reads the Kiro CLI OIDC token from its local SQLite database.
      * Returns {@code null} if the DB or token row does not exist.
