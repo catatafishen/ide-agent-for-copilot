@@ -172,9 +172,17 @@ public final class KiroClient extends AcpClient {
      */
     static final long REFRESH_BUFFER_MILLIS = 200_000L;
 
+    /**
+     * Supplies the OIDC token for {@code _kiro/auth/getAccessToken} callbacks.
+     * Defaults to {@link #defaultTokenSupplier()} which reads and conditionally refreshes the
+     * real SQLite DB. Package-private so tests in the same package can inject a controlled
+     * supplier without subclassing (the class is {@code final}).
+     */
+    java.util.concurrent.Callable<KiroTokenRecord> tokenSupplier = this::defaultTokenSupplier;
+
     private void handleGetAccessToken(com.google.gson.JsonElement id) {
         try {
-            KiroTokenRecord token = resolveKiroToken();
+            KiroTokenRecord token = tokenSupplier.call();
             if (token == null) {
                 LOG.warn("Kiro v3: _kiro/auth/getAccessToken — no token found in local DB; " +
                     "run 'kiro login' to authenticate");
@@ -217,13 +225,10 @@ public final class KiroClient extends AcpClient {
     /**
      * Reads the Kiro OIDC token, triggering a CLI refresh first if the cached token is expired
      * or within the refresh buffer. Returns the token after the optional refresh, or {@code null}
-     * if no token exists in the local DB.
-     *
-     * <p>Protected so tests can override it to inject a controlled token without hitting the
-     * real filesystem or spawning a {@code kiro-cli whoami} subprocess.</p>
+     * if no token exists in the local DB. Used as the default {@link #tokenSupplier}.
      */
     @org.jetbrains.annotations.Nullable
-    protected KiroTokenRecord resolveKiroToken() throws Exception {
+    private KiroTokenRecord defaultTokenSupplier() throws Exception {
         KiroTokenRecord token = readKiroToken();
         // In ACP host-callback auth the CLI delegates token refresh to us. If the cached token
         // is expired or within Kiro's refresh buffer, returning it as-is makes KAS reject the
