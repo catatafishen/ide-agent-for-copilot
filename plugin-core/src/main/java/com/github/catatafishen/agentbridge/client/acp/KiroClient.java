@@ -192,6 +192,20 @@ public final class KiroClient extends AcpClient {
                 transport.sendError(id, -32000, "No Kiro access token found — run 'kiro login'");
                 return;
             }
+            // Guard: if the CLI refresh did not extend the token (e.g. `kiro-cli whoami` did not
+            // actually rotate it), the token is still expired or within KAS's 180s refresh buffer.
+            // Returning it anyway makes KAS reject the turn with the confusing "token already inside
+            // 180000ms refresh buffer" error. Surface an actionable error instead of handing back a
+            // token we know KAS will reject (no silent fallback that hides the real problem).
+            if (!isTokenFresh(token.expiresAt(), java.time.Instant.now(), REFRESH_BUFFER_MILLIS)) {
+                LOG.warn("Kiro v3: _kiro/auth/getAccessToken — token is still expired or within the "
+                    + "refresh buffer after a CLI refresh attempt (expires " + token.expiresAt()
+                    + "). Run 'kiro login' to re-authenticate.");
+                transport.sendError(id, -32000,
+                    "Kiro access token is expired and could not be refreshed automatically — "
+                        + "run 'kiro login' to re-authenticate.");
+                return;
+            }
             JsonObject result = new JsonObject();
             result.addProperty("accessToken", token.accessToken());
             result.addProperty("expiresAt", token.expiresAt());
