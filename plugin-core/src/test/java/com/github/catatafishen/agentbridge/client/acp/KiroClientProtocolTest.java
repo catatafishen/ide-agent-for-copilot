@@ -27,11 +27,9 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 /**
  * Protocol-level tests for {@link KiroClient} using a mocked transport.
@@ -297,50 +295,25 @@ class KiroClientProtocolTest {
     // ── _kiro/auth/getAccessToken — controlled token scenarios ───────────
 
     /**
-     * Tests for {@link KiroClient#handleGetAccessToken} that need deterministic control over the
-     * token returned by {@link KiroClient#resolveKiroToken()}. A subclass overrides the method so
-     * no real filesystem access or {@code kiro-cli} subprocess is needed.
+     * Tests for {@link KiroClient#handleGetAccessToken} using the package-private
+     * {@link KiroClient#tokenSupplier} field to inject a controlled token without touching
+     * the real SQLite DB or spawning a {@code kiro-cli} subprocess.
      */
     @Nested
-    @DisplayName("_kiro/auth/getAccessToken — controlled token scenarios via resolveKiroToken override")
+    @DisplayName("_kiro/auth/getAccessToken — controlled token scenarios via tokenSupplier injection")
     class GetAccessTokenControlled {
-
-        /**
-         * Testable subclass that overrides {@link KiroClient#resolveKiroToken()} to return a
-         * caller-controlled token, bypassing the real SQLite DB and CLI refresh subprocess.
-         */
-        private static class TestableKiroClient extends KiroClient {
-            private final KiroTokenRecord suppliedToken;
-
-            TestableKiroClient(JsonRpcTransport transport, KiroTokenRecord token) {
-                super(null, transport);
-                this.suppliedToken = token;
-            }
-
-            @Override
-            protected KiroTokenRecord resolveKiroToken() {
-                return suppliedToken;
-            }
-        }
 
         @Test
         @DisplayName("null token → sendError with 'run kiro login' message")
         void nullTokenSendsLoginError() {
-            JsonRpcTransport transport = mock(JsonRpcTransport.class);
-            KiroClient c = new TestableKiroClient(transport, null);
-            c.registerHandlers();
-
-            @SuppressWarnings("unchecked")
-            var requestCaptor = ArgumentCaptor.forClass(BiConsumer.class);
-            verify(transport).onRequest(requestCaptor.capture());
-            BiConsumer<JsonElement, JsonRpcTransport.IncomingRequest> handler = requestCaptor.getValue();
+            client.tokenSupplier = () -> null;
 
             JsonElement id = new JsonPrimitive(1);
-            handler.accept(id, new JsonRpcTransport.IncomingRequest("_kiro/auth/getAccessToken", null));
+            requestHandler.accept(id, new JsonRpcTransport.IncomingRequest("_kiro/auth/getAccessToken", null));
 
             @SuppressWarnings("unchecked")
             ArgumentCaptor<String> msgCaptor = ArgumentCaptor.forClass(String.class);
-            verify(transport).sendError(eq(id), eq(-32000), msgCaptor.capture());
+            verify(mockTransport).sendError(eq(id), eq(-32000), msgCaptor.capture());
             assertTrue(msgCaptor.getValue().contains("kiro login"),
                 "Error should tell user to run 'kiro login', got: " + msgCaptor.getValue());
         }
@@ -350,23 +323,14 @@ class KiroClientProtocolTest {
         void staleTokenAfterRefreshSendsActionableError() {
             // Token expired 5 minutes ago — isTokenFresh() will return false
             String expiredAt = java.time.Instant.now().minusSeconds(300).toString();
-            KiroTokenRecord staleToken = new KiroClient.KiroTokenRecord("tok-xyz", expiredAt, "arn:aws:...");
-
-            JsonRpcTransport transport = mock(JsonRpcTransport.class);
-            KiroClient c = new TestableKiroClient(transport, staleToken);
-            c.registerHandlers();
-
-            @SuppressWarnings("unchecked")
-            var requestCaptor = ArgumentCaptor.forClass(BiConsumer.class);
-            verify(transport).onRequest(requestCaptor.capture());
-            BiConsumer<JsonElement, JsonRpcTransport.IncomingRequest> handler = requestCaptor.getValue();
+            client.tokenSupplier = () -> new KiroTokenRecord("tok-xyz", expiredAt, "arn:aws:...");
 
             JsonElement id = new JsonPrimitive(2);
-            handler.accept(id, new JsonRpcTransport.IncomingRequest("_kiro/auth/getAccessToken", null));
+            requestHandler.accept(id, new JsonRpcTransport.IncomingRequest("_kiro/auth/getAccessToken", null));
 
             @SuppressWarnings("unchecked")
             ArgumentCaptor<String> msgCaptor = ArgumentCaptor.forClass(String.class);
-            verify(transport).sendError(eq(id), eq(-32000), msgCaptor.capture());
+            verify(mockTransport).sendError(eq(id), eq(-32000), msgCaptor.capture());
             String msg = msgCaptor.getValue();
             assertTrue(msg.contains("expired") || msg.contains("refresh"),
                 "Error should mention 'expired' or 'refresh', got: " + msg);
@@ -379,24 +343,15 @@ class KiroClientProtocolTest {
         void freshTokenSendsFullResponse() {
             // Token expires 1 hour from now — well outside the 200s buffer
             String freshAt = java.time.Instant.now().plusSeconds(3600).toString();
-            KiroTokenRecord freshToken = new KiroClient.KiroTokenRecord(
+            client.tokenSupplier = () -> new KiroTokenRecord(
                 "access-token-abc", freshAt, "arn:aws:codewhisperer:us-east-1:123:profile/XYZ");
 
-            JsonRpcTransport transport = mock(JsonRpcTransport.class);
-            KiroClient c = new TestableKiroClient(transport, freshToken);
-            c.registerHandlers();
-
-            @SuppressWarnings("unchecked")
-            var requestCaptor = ArgumentCaptor.forClass(BiConsumer.class);
-            verify(transport).onRequest(requestCaptor.capture());
-            BiConsumer<JsonElement, JsonRpcTransport.IncomingRequest> handler = requestCaptor.getValue();
-
             JsonElement id = new JsonPrimitive(3);
-            handler.accept(id, new JsonRpcTransport.IncomingRequest("_kiro/auth/getAccessToken", null));
+            requestHandler.accept(id, new JsonRpcTransport.IncomingRequest("_kiro/auth/getAccessToken", null));
 
             @SuppressWarnings("unchecked")
             ArgumentCaptor<JsonElement> responseCaptor = ArgumentCaptor.forClass(JsonElement.class);
-            verify(transport).sendResponse(eq(id), responseCaptor.capture());
+            verify(mockTransport).sendResponse(eq(id), responseCaptor.capture());
             JsonObject resp = responseCaptor.getValue().getAsJsonObject();
             assertEquals("access-token-abc", resp.get("accessToken").getAsString());
             assertEquals(freshAt, resp.get("expiresAt").getAsString());
@@ -407,44 +362,17 @@ class KiroClientProtocolTest {
         @DisplayName("fresh token without profileArn → sendResponse without profileArn field")
         void freshTokenWithoutProfileArnOmitsField() {
             String freshAt = java.time.Instant.now().plusSeconds(3600).toString();
-            KiroTokenRecord tokenNoArn = new KiroClient.KiroTokenRecord("tok-noprofile", freshAt, null);
-
-            JsonRpcTransport transport = mock(JsonRpcTransport.class);
-            KiroClient c = new TestableKiroClient(transport, tokenNoArn);
-            c.registerHandlers();
-
-            @SuppressWarnings("unchecked")
-            var requestCaptor = ArgumentCaptor.forClass(BiConsumer.class);
-            verify(transport).onRequest(requestCaptor.capture());
-            BiConsumer<JsonElement, JsonRpcTransport.IncomingRequest> handler = requestCaptor.getValue();
+            client.tokenSupplier = () -> new KiroTokenRecord("tok-noprofile", freshAt, null);
 
             JsonElement id = new JsonPrimitive(4);
-            handler.accept(id, new JsonRpcTransport.IncomingRequest("_kiro/auth/getAccessToken", null));
+            requestHandler.accept(id, new JsonRpcTransport.IncomingRequest("_kiro/auth/getAccessToken", null));
 
             @SuppressWarnings("unchecked")
             ArgumentCaptor<JsonElement> responseCaptor = ArgumentCaptor.forClass(JsonElement.class);
-            verify(transport).sendResponse(eq(id), responseCaptor.capture());
+            verify(mockTransport).sendResponse(eq(id), responseCaptor.capture());
             JsonObject resp = responseCaptor.getValue().getAsJsonObject();
             assertEquals("tok-noprofile", resp.get("accessToken").getAsString());
             assertFalse(resp.has("profileArn"), "profileArn should be absent when null");
-        }
-
-        // Keep the original "unknown method" test here too so the nested class is self-contained
-        @Test
-        @DisplayName("unknown method is delegated to parent AcpClient.handleAgentRequest without throw")
-        @SuppressWarnings("unchecked")
-        void unknownMethodDelegatedToParentNoThrow() {
-            JsonRpcTransport transport = mock(JsonRpcTransport.class);
-            KiroClient c = new TestableKiroClient(transport, null);
-            c.registerHandlers();
-
-            var requestCaptor = ArgumentCaptor.forClass(BiConsumer.class);
-            verify(transport).onRequest(requestCaptor.capture());
-            BiConsumer<JsonElement, JsonRpcTransport.IncomingRequest> handler = requestCaptor.getValue();
-
-            assertDoesNotThrow(() ->
-                handler.accept(new JsonPrimitive(7),
-                    new JsonRpcTransport.IncomingRequest("unknown/method", new JsonObject())));
         }
     }
 
